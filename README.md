@@ -29,22 +29,24 @@ Open http://127.0.0.1:5173. Vite proxies `/api` to the backend on port 8000. Kee
 
 ## What works
 
-- Responsive dark dashboard with job requirements and individual, multiple, drag-and-drop, or folder upload.
-- PDF/DOCX validation: up to 30 files, 10 MB each. Folders are flattened; unrelated files are reported and skipped. Folder upload depends on browser support.
+- Minimal responsive page with job requirements, multiple PDF/DOCX uploads, and folder selection. No sidebar or fictional candidates.
+- Upload validation: up to 30 files per batch, 10 MB each. Unrelated folder files are reported and skipped. Folder selection depends on browser support.
 - Local extraction of PDF text, DOCX paragraphs and tables; per-file errors allow valid files to continue.
-- Candidate search, review filters, evidence viewer, and manual Needs review / Shortlisted / Reviewed controls.
-- Initial fictional examples are clearly labeled. Real uploads replace the examples and show extracted text, never invented qualification judgments.
-- Email and cloud import are disabled and marked coming soon.
+- Two manual priority categories: green **Review First** and red **Needs Review**. All parsed resumes initially enter Needs Review; these categories do not imply qualification or rejection.
+- Both categories allow evidence inspection, downloading the original PDF/DOCX, opening original PDFs in a browser, and recording an Undecided / Shortlisted / Reviewed decision. DOCX originals can be inspected with a local document application.
+- Original files stay associated with their batch positions, including duplicate filenames in different folders and batches with parsing errors.
 
 ## Phase-one boundaries
 
-AI qualification analysis is **not connected**. The Analyze button currently extracts resume text. Job requirements are submitted and validated but not used for AI matching yet. No scores, ranking, or automatic rejection is implemented. The UI labels demonstration data and extraction mode.
+AI qualification analysis is **not connected**. The Analyze Resumes button currently extracts resume text. Job requirements are submitted and validated but not used for AI matching yet. No automatic scores, ranking, or rejection is implemented.
 
-Uploads are processed in memory and not saved by the app. Evidence is limited to the first 2,000 extracted characters. Review decisions and job requirements are session-only and reset on page reload. Scanned images need OCR, which is not implemented. This development foundation has no authentication; keep the services on loopback and do not expose them publicly.
+The API accepts batches with the existing 30-file limit. Tests cover rejecting over-limit batches; throughput and larger-scale performance have not been benchmarked. There is no claim of support for 1,000 resumes.
+
+Uploads are processed locally and not saved by the app. The frontend retains original File objects for inspection and releases object URLs when their cards unmount. Evidence is limited to the first 2,000 extracted characters; consult the original for full context. Review decisions, original-file access, and job requirements reset on page reload. Re-running analysis replaces results and resets decisions. Scanned images need OCR, which is not implemented. This development foundation has no authentication; keep the services on loopback and do not expose them publicly.
 
 ## Optional PostgreSQL
 
-The current dashboard does not need a database. To prepare local PostgreSQL with Docker:
+The current interface does not need a database. To prepare local PostgreSQL with Docker:
 
 ```sh
 docker compose up -d db
@@ -69,4 +71,4 @@ npm test
 npm run build
 ```
 
-Backend tests exercise real generated PDF/DOCX parsing, malformed/unsupported/empty inputs, batch limits, and the demonstration disclosure. Frontend tests cover upload validation; the build checks TypeScript and bundles the app.
+Backend tests exercise real generated PDF/DOCX parsing, malformed/unsupported/empty inputs, batch limits, and the demonstration disclosure. Frontend tests cover upload validation, correct original-file association after partial failures, manual priority/decision updates, the empty initial interface, and escaped evidence in both categories. The build checks TypeScript and bundles the app. Component checks use server rendering; they do not replace browser interaction or visual testing.
