@@ -1,4 +1,6 @@
-"""Local resume parsing foundation. No AI judgments or automatic rejections."""
+
+"""ResumePilot AI: local, evidence-based resume screening API."""
+
 import io
 import logging
 import time
@@ -6,69 +8,226 @@ from pathlib import Path
 
 import pymupdf
 from docx import Document
-from fastapi import FastAPI, File, HTTPException, UploadFile, Form
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
-app = FastAPI(title="ResumePilot AI", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_methods=["GET", "POST"], allow_headers=["*"])
+from app.matcher import MatchingError, fallback_result, match_resume
+
+app = FastAPI(title="ResumePilot AI", version="0.2.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
 logger = logging.getLogger("uvicorn.error")
+
 MAX_SIZE = 10 * 1024 * 1024
 MAX_FILES = 30
+MAX_REQUIREMENTS = 20000
 
 
 def parse_resume(filename: str, data: bytes) -> str:
+    """Extract readable text from a PDF or DOCX resume."""
+
     extension = Path(filename).suffix.lower()
+
     if extension not in {".pdf", ".docx"}:
         raise ValueError("Only PDF and DOCX files are supported.")
+
     if not data or len(data) > MAX_SIZE:
-        raise ValueError("Files must be nonempty and no larger than 10 MB.")
+        raise ValueError(
+            "Files must be nonempty and no larger than 10 MB."
+        )
+
     try:
         if extension == ".pdf":
-            with pymupdf.open(stream=data, filetype="pdf") as document:
+            with pymupdf.open(
+                stream=data,
+                filetype="pdf",
+            ) as document:
                 if document.needs_pass:
-                    raise ValueError("Password-protected PDFs are not supported.")
-                result = "\n".join(page.get_text() for page in document)
+                    raise ValueError(
+                        "Password-protected PDFs are not supported."
+                    )
+
+                result = "\n".join(
+                    page.get_text()
+                    for page in document
+                )
+
         else:
             document = Document(io.BytesIO(data))
-            result = "\n".join([p.text for p in document.paragraphs] + [" ".join(c.text for c in row.cells) for table in document.tables for row in table.rows])
+
+            paragraphs = [
+                paragraph.text
+                for paragraph in document.paragraphs
+            ]
+
+            tables = [
+                " ".join(cell.text for cell in row.cells)
+                for table in document.tables
+                for row in table.rows
+            ]
+
+            result = "\n".join(paragraphs + tables)
+
     except Exception as exc:
-        raise ValueError("Unable to read this document. Check that it is a valid, unencrypted PDF or DOCX.") from exc
+        raise ValueError(
+            "Unable to read this document. "
+            "Check that it is a valid, unencrypted PDF or DOCX."
+        ) from exc
+
     if not result.strip():
-        raise ValueError("No readable text found. Scanned PDFs require OCR, which is not available yet.")
+        raise ValueError(
+            "No readable text found. "
+            "Scanned PDFs require OCR, which is not available yet."
+        )
+
     return result.strip()
 
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "analysis_mode": "demonstration", "ai_enabled": False, "persistence_enabled": False}
+    return {
+        "status": "ok",
+        "analysis_mode": "ai",
+        "ai_enabled": True,
+        "persistence_enabled": False,
+        "human_review_required": True,
+    }
 
 
 @app.post("/api/analyze")
-async def analyze(files: list[UploadFile] = File(...), requirements: str = Form("")):
+async def analyze(
+    files: list[UploadFile] = File(...),
+    requirements: str = Form(""),
+):
+    """Parse resumes, evaluate essentials, and suggest review priority."""
+
     if len(files) > MAX_FILES:
-        raise HTTPException(400, "Upload up to 30 resumes at a time.")
-    if len(requirements) > 20000:
-        raise HTTPException(400, "Job requirements must be under 20,000 characters.")
+        raise HTTPException(
+            status_code=400,
+            detail="Upload up to 30 resumes at a time.",
+        )
+
+    if len(requirements) > MAX_REQUIREMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail="Job requirements must be under 20,000 characters.",
+        )
+
+    if not requirements.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Enter essential job requirements before analysis.",
+        )
+
     started = time.monotonic()
-    candidates, errors = [], []
+
+    candidates = []
+    errors = []
+
     for index, file in enumerate(files):
+        filename = file.filename or "Resume"
+
         try:
             data = await file.read(MAX_SIZE + 1)
-            # Parsing is synchronous CPU work; keep the ASGI event loop responsive.
-            content = await run_in_threadpool(parse_resume, file.filename or "", data)
-            candidates.append({"id": str(index), "name": Path(file.filename or "Resume").stem.replace("_", " "), "filename": file.filename, "summary": "Resume text extracted successfully. Qualification assessment awaits human review; AI analysis is not connected.", "evidence": content[:2000], "status": "Needs review", "demo": True})
+
+            content = await run_in_threadpool(
+                parse_resume,
+                filename,
+                data,
+            )
+
+            try:
+                assessment = await match_resume(
+                    requirements=requirements,
+                    resume_text=content,
+                )
+
+                ai_completed = True
+
+            except MatchingError:
+                logger.warning(
+                    "AI matching unavailable: batch_index=%d",
+                    index,
+                )
+
+                assessment = fallback_result(requirements)
+                ai_completed = False
+
+            candidates.append({
+                "id": str(index),
+                "name": Path(filename).stem.replace("_", " "),
+                "filename": filename,
+                "summary": assessment["summary"],
+                "evidence": content[:2000],
+                "status": assessment["category"],
+                "category": assessment["category"],
+                "requirements": assessment["requirements"],
+                "supported_count": assessment["supported_count"],
+                "total_requirements": assessment["total_requirements"],
+                "human_review_required": True,
+                "ai_completed": ai_completed,
+                "demo": False,
+            })
+
         except ValueError as exc:
-            errors.append({"filename": file.filename, "message": str(exc)})
+            errors.append({
+                "filename": filename,
+                "message": str(exc),
+            })
+
         except Exception as exc:
-            # Do not expose parser internals or log applicant filenames/text.
-            logger.error("Resume processing failed: batch_index=%d error_type=%s", index, type(exc).__name__)
-            errors.append({"filename": file.filename, "message": "This resume could not be processed. Please try again."})
+            logger.error(
+                "Resume processing failed: "
+                "batch_index=%d error_type=%s",
+                index,
+                type(exc).__name__,
+            )
+
+            errors.append({
+                "filename": filename,
+                "message": (
+                    "This resume could not be processed. "
+                    "Please try again."
+                ),
+            })
+
         finally:
             try:
                 await file.close()
+
             except Exception as exc:
-                logger.error("Upload cleanup failed: batch_index=%d error_type=%s", index, type(exc).__name__)
-    logger.info("Resume batch complete: files=%d candidates=%d errors=%d duration_ms=%d",
-                len(files), len(candidates), len(errors), int((time.monotonic() - started) * 1000))
-    return {"mode": "demonstration", "notice": "Real document extraction only. No AI qualification judgments have been made.", "candidates": candidates, "errors": errors}
+                logger.error(
+                    "Upload cleanup failed: "
+                    "batch_index=%d error_type=%s",
+                    index,
+                    type(exc).__name__,
+                )
+
+    logger.info(
+        "Resume batch complete: "
+        "files=%d candidates=%d errors=%d duration_ms=%d",
+        len(files),
+        len(candidates),
+        len(errors),
+        int((time.monotonic() - started) * 1000),
+    )
+
+    return {
+        "mode": "ai",
+        "notice": (
+            "AI-assisted review priorities only. "
+            "All hiring decisions require human review."
+        ),
+        "candidates": candidates,
+        "errors": errors,
+    }
