@@ -122,7 +122,7 @@ def cleanup_expired(now=None, limit=100):
     removed = 0
     with connection() as db:
         db.execute('BEGIN IMMEDIATE')
-        rows = db.execute('SELECT file_id FROM temporary_resume_files WHERE expires_at<=? ORDER BY expires_at,file_id LIMIT ?', (now,limit)).fetchall()
+        rows = db.execute('SELECT f.file_id FROM temporary_resume_files f WHERE f.expires_at<=? AND NOT EXISTS(SELECT 1 FROM analysis_job_inputs i WHERE i.file_id=f.file_id) ORDER BY f.expires_at,f.file_id LIMIT ?', (now,limit)).fetchall()
         for row in rows:
             target = _path(root,row['file_id'])
             # Unlinking a symlink removes the link, never its target.
@@ -130,3 +130,23 @@ def cleanup_expired(now=None, limit=100):
             db.execute('DELETE FROM temporary_resume_files WHERE file_id=? AND expires_at<=?', (row['file_id'],now))
             removed += 1
     return removed
+
+
+def delete_resume(user_id, file_id):
+    """Idempotently remove one owned staged file and its metadata.
+
+    Never accept a filesystem path from callers.
+    """
+    root = storage_root()
+    with connection() as db:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute('SELECT 1 FROM temporary_resume_files WHERE user_id=? AND file_id=?',
+                         (user_id, file_id)).fetchone()
+        if row is None:
+            return False
+        # DB references must be removed before unlink. Failed unlink leaves an
+        # orphan that a separate controlled maintenance pass can reconcile.
+        db.execute('DELETE FROM temporary_resume_files WHERE user_id=? AND file_id=?',
+                   (user_id, file_id))
+    _path(root, file_id).unlink(missing_ok=True)
+    return True

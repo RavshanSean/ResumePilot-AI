@@ -115,3 +115,12 @@ Complete before accepting live payments or launching publicly.
 - [ ] Connect storage to asynchronous submission and worker execution
 - [ ] Encrypted production storage, retention/deletion policy, orphan-file reconciliation
 - [ ] Filesystem access controls, monitoring and backup/deletion verification
+
+## Batch 20: Staged queue inputs (development)
+- [x] Immutable, account-scoped ordered upload manifest linked to existing queued batch
+- [x] Fingerprint and reserved-credit checks before staging; transactional manifest publication
+- [x] Separate staged-job claim gated on manifest and file expiry
+- [x] Preserve synchronous API and frontend; no worker execution or live payment/API activation
+- [ ] Coordinate file deletion and expired manifests before retention cleanup
+- [ ] Crash-orphan reconciliation and durable encryption at rest
+- [ ] Wire staging into HTTP submission and implement fenced worker execution
