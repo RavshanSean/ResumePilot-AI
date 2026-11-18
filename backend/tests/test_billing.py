@@ -142,3 +142,84 @@ def test_webhook_is_disabled_without_configuration(account):
         content=json.dumps(paid_event()),
     )
     assert response.status_code == 503
+
+
+
+def test_async_payment_grants_once(account):
+    _, user_id, _ = account
+    create_order(user_id)
+
+    event = paid_event("evt_async")
+    event["type"] = "checkout.session.async_payment_succeeded"
+
+    assert billing.apply_paid_event(event) is True
+    assert credits.balance(user_id) == 105
+
+    # Different Stripe events for one Checkout Session
+    # must never result in two credit grants.
+    assert billing.apply_paid_event(paid_event("evt_completed")) is False
+    assert credits.balance(user_id) == 105
+
+
+def test_unrelated_webhook_never_grants(account):
+    _, user_id, _ = account
+    create_order(user_id)
+
+    event = paid_event()
+    event["type"] = "payment_intent.succeeded"
+
+    assert billing.apply_paid_event(event) is False
+    assert credits.balance(user_id) == 5
+
+
+def test_reconciliation_reports_paid_order(account):
+    _, user_id, _ = account
+    create_order(user_id)
+
+    billing.apply_paid_event(paid_event())
+
+    report = billing.reconciliation_report()
+
+    assert report["orders"] == 1
+    assert report["paid"] == 1
+    assert report["pending"] == 0
+    assert report["issues"] == []
+
+
+def test_reconciliation_detects_missing_event(account):
+    _, user_id, _ = account
+    create_order(user_id)
+
+    with billing.connection() as db:
+        db.execute(
+            "UPDATE billing_orders SET state='paid' WHERE id=?",
+            ("order-one",),
+        )
+
+    report = billing.reconciliation_report()
+
+    assert report["paid"] == 1
+    assert {
+        "order_id": "order-one",
+        "issue": "paid_order_event_count_mismatch",
+    } in report["issues"]
+
+
+def test_reconciliation_detects_pending_missing_session(account):
+    _, user_id, _ = account
+
+    with billing.connection() as db:
+        db.execute(
+            """INSERT INTO billing_orders
+               (id,user_id,package,credits,amount,currency,created_at)
+               VALUES(?,?,?,?,?,'usd',?)""",
+            ("pending-one", user_id, "starter", 100, 199, int(time.time())),
+        )
+
+    report = billing.reconciliation_report()
+
+    assert report["pending"] == 1
+    assert {
+        "order_id": "pending-one",
+        "issue": "missing_checkout_session",
+    } in report["issues"]

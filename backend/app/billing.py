@@ -178,7 +178,10 @@ def verify_signature(body, header, secret, now=None):
 
 def apply_paid_event(event):
     """Grant once per stored paid order, in one SQLite transaction."""
-    if event.get("type") != "checkout.session.completed":
+    if event.get("type") not in (
+        "checkout.session.completed",
+        "checkout.session.async_payment_succeeded",
+    ):
         return False
 
     event_id = event.get("id")
@@ -232,6 +235,54 @@ def apply_paid_event(event):
             (event_id, order_id, int(time.time())),
         )
         return True
+
+
+
+def reconciliation_report():
+    """Read-only development audit; never adjusts customer balances."""
+    with connection() as db:
+        orders = db.execute(
+            """SELECT id, user_id, credits, amount, currency,
+                      stripe_session, state
+               FROM billing_orders ORDER BY created_at, id"""
+        ).fetchall()
+
+        issues = []
+        paid_count = 0
+        pending_count = 0
+
+        for order in orders:
+            if order["state"] == "paid":
+                paid_count += 1
+                events = db.execute(
+                    "SELECT COUNT(*) AS n FROM billing_events WHERE order_id=?",
+                    (order["id"],),
+                ).fetchone()["n"]
+
+                if events != 1:
+                    issues.append({
+                        "order_id": order["id"],
+                        "issue": "paid_order_event_count_mismatch",
+                    })
+            else:
+                pending_count += 1
+
+            if not order["stripe_session"]:
+                issues.append({
+                    "order_id": order["id"],
+                    "issue": "missing_checkout_session",
+                })
+
+        return {
+            "orders": len(orders),
+            "paid": paid_count,
+            "pending": pending_count,
+            "issues": issues,
+            "note": (
+                "Local database consistency only. Stripe-side "
+                "payment and refund reconciliation is not implemented."
+            ),
+        }
 
 
 @router.post("/webhook")
