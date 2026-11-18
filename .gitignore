@@ -9,3 +9,7 @@ __pycache__/
 
 *.tsbuildinfo
 \n*.db\n*.db-shm\n*.db-wal\n*.sqlite3
+backend/resumepilot.db
+*.db
+*.db-shm
+*.db-wal
