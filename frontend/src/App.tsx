@@ -20,9 +20,16 @@ export function CandidateCard({ candidate, onChange }: {
       <summary>Inspect resume & evidence</summary>
       {originalUrl && <a className="original-link" href={originalUrl} download={candidate.filename}>Download original resume</a>}
       {originalUrl && /\.pdf$/i.test(candidate.filename) && <a className="original-link" href={originalUrl} target="_blank" rel="noopener noreferrer">Open original PDF</a>}
+      <p className="hint">{candidate.summary}</p>
+      {candidate.requirements?.map((item, index) =>
+        <p className="hint" key={index}>
+          <strong>{item.requirement}</strong>: {item.status.replace('_', ' ')}
+          {item.evidence ? ` | Evidence: "${item.evidence}"` : ''}
+        </p>
+      )}
       <h4>Qualification evidence · extracted text</h4>
       <pre>{candidate.evidence}</pre>
-      <p className="hint">First 2,000 characters. Inspect the original for full context; qualifications have not been assessed.</p>
+      <p className="hint">First 2,000 characters. AI findings are review priorities, not hiring decisions. Verify all evidence against the original.</p>
     </details>
     <div className="review-controls">
       <label>Review priority<select value={candidate.category} onChange={e => onChange({ category: e.target.value as ReviewCategory })}><option>Needs Review</option><option>Review First</option></select></label>
@@ -54,7 +61,7 @@ export default function App() {
   }
 
   async function analyze() {
-    if (!files.length || busy) return;
+    if (!files.length || !requirements.trim() || busy) return;
     setBusy(true);
     setErrors([]);
     const batch = [...files];
@@ -91,17 +98,17 @@ export default function App() {
         <input ref={folder} aria-label="Upload resume folder" type="file" multiple hidden {...{ webkitdirectory: '', directory: '' }} onChange={e => { addFiles(e.target.files); e.target.value = ''; }}/>
       </div>
       {!!files.length && <ul className="file-list" aria-label="Selected resumes">{files.map((file, index) => <li key={index}><FileText size={15} aria-hidden="true"/><span>{file.webkitRelativePath || file.name}</span><button aria-label={`Remove ${file.webkitRelativePath || file.name}`} disabled={busy} onClick={() => setFiles(current => current.filter((_, i) => i !== index))}><X size={16}/></button></li>)}</ul>}
-      <button className="analyze" disabled={!files.length || busy} onClick={analyze}>{busy ? <LoaderCircle className="spin" size={19}/> : <Sparkles size={19}/>} {busy ? 'Extracting resumes…' : 'Analyze Resumes'}</button>
-      <p className="disclosure" role="status">Local text extraction only. Ollama matching is not connected.</p>
+      <button className="analyze" disabled={!files.length || !requirements.trim() || busy} onClick={analyze}>{busy ? <LoaderCircle className="spin" size={19}/> : <Sparkles size={19}/>} {busy ? 'Analyzing resumes…' : 'Analyze Resumes'}</button>
+      <p className="disclosure" role="status">AI-assisted screening. Human review is required for every candidate. Enter one essential requirement per line.</p>
       {!!errors.length && <div className="errors" role="alert">{errors.map((error, i) => <p key={i}>{error}</p>)}</div>}
     </section>
     <section className="results" aria-label="Resume review results" aria-busy={busy}>
       {(['Review First', 'Needs Review'] as const).map(category => <section className={`result-category ${category === 'Review First' ? 'green' : 'red'}`} key={category} aria-label={category}>
         <h2><span className="category-dot"/>{category}</h2>
         {candidates.filter(candidate => candidate.category === category).map(candidate => <CandidateCard key={candidate.id} candidate={candidate} onChange={changes => setCandidates(current => updateReview(current, candidate.id, changes))}/>)}
-        {!candidates.some(candidate => candidate.category === category) && <p className="empty">{category === 'Review First' ? 'Manually prioritize resumes here.' : 'Uploaded resumes appear here after extraction.'}</p>}
+        {!candidates.some(candidate => candidate.category === category) && <p className="empty">{category === 'Review First' ? 'Candidates with evidence supporting every essential requirement appear here.' : 'Candidates requiring further review appear here.'}</p>}
       </section>)}
     </section>
-    <p className="review-note">Categories are manual priorities, not AI judgments. No automatic rejections. Reviews reset on reload.</p>
+    <p className="review-note">AI suggests review priorities. You control all decisions. No automatic rejections. Reviews reset on reload.</p>
   </main>;
 }

@@ -8,6 +8,7 @@ Red means further human review is needed. Neither is a hiring decision.
 import json
 import logging
 import os
+import asyncio
 from typing import Any
 
 import httpx
@@ -16,6 +17,15 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama").lower()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-nano")
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+AI_TIMEOUT_SECONDS = float(os.getenv("AI_TIMEOUT_SECONDS", "60"))
+OPENAI_MAX_REQUESTS_PER_PROCESS = int(
+    os.getenv("OPENAI_MAX_REQUESTS_PER_PROCESS", "100")
+)
+_openai_requests = 0
+_openai_lock = asyncio.Lock()
 MAX_RESUME_CHARS = 30000
 MAX_REQUIREMENTS_CHARS = 20000
 
@@ -178,32 +188,73 @@ async def match_resume(
           "Copy each requirement exactly into the response."
     )
 
-    payload = {
-        "model": OLLAMA_MODEL,
-        "stream": False,
-        "format": "json",
-        "options": {
-            "temperature": 0,
-        },
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-    }
+    if AI_PROVIDER not in {"ollama", "openai"}:
+        raise MatchingError("Unsupported AI provider configuration.")
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
+
+    global _openai_requests
+
+    if AI_PROVIDER == "openai":
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        if not api_key:
+            raise MatchingError("OpenAI API key is not configured.")
+
+        async with _openai_lock:
+            if _openai_requests >= OPENAI_MAX_REQUESTS_PER_PROCESS:
+                raise MatchingError("AI request allowance reached.")
+            _openai_requests += 1
+
+        url = OPENAI_URL
+        headers = {"Authorization": f"Bearer {api_key}"}
+        payload = {
+            "model": OPENAI_MODEL,
+            "messages": messages,
+            "response_format": {"type": "json_object"},
+            "max_completion_tokens": 1200,
+        }
+    else:
+        url = f"{OLLAMA_URL}/api/chat"
+        headers = {}
+        payload = {
+            "model": OLLAMA_MODEL,
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": 0},
+            "messages": messages,
+        }
 
     try:
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(180.0, connect=10.0),
+            timeout=httpx.Timeout(
+                AI_TIMEOUT_SECONDS,
+                connect=min(10.0, AI_TIMEOUT_SECONDS),
+            ),
             trust_env=False,
         ) as client:
-            response = await client.post(
-                f"{OLLAMA_URL}/api/chat",
-                json=payload,
-            )
+            if AI_PROVIDER == "openai":
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                )
+            else:
+                response = await client.post(
+                    url,
+                    json=payload,
+                )
             response.raise_for_status()
 
         data = response.json()
-        content = data["message"]["content"]
+
+        if AI_PROVIDER == "openai":
+            content = data["choices"][0]["message"]["content"]
+        else:
+            content = data["message"]["content"]
+
         parsed = json.loads(content)
 
         if not isinstance(parsed, dict):
@@ -213,20 +264,22 @@ async def match_resume(
 
     except httpx.HTTPError as exc:
         logger.warning(
-            "Ollama request failed: error_type=%s",
+            "AI provider request failed: provider=%s error_type=%s",
+            AI_PROVIDER,
             type(exc).__name__,
         )
         raise MatchingError(
-            "Local AI is unavailable. Check Ollama and the model."
+            "AI service is unavailable. Manual review required."
         ) from exc
 
-    except (ValueError, KeyError, TypeError) as exc:
+    except (ValueError, KeyError, TypeError, IndexError) as exc:
         logger.warning(
-            "Ollama response invalid: error_type=%s",
+            "AI response invalid: provider=%s error_type=%s",
+            AI_PROVIDER,
             type(exc).__name__,
         )
         raise MatchingError(
-            "AI returned an invalid response. Human review required."
+            "AI returned an invalid response. Manual review required."
         ) from exc
 
 

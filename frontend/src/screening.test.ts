@@ -28,3 +28,42 @@ test('rejects invalid API references instead of linking the wrong resume', () =>
     expect(() => attachOriginals([{ ...parsed, id }], batch)).toThrow('invalid resume reference');
   }
 });
+
+
+test('preserves verified AI review priorities and human control', () => {
+  const [candidate] = attachOriginals([{
+    ...parsed,
+    category: 'Review First',
+    ai_completed: true,
+    supported_count: 2,
+    total_requirements: 2,
+    requirements: [
+      { requirement: 'Python', status: 'supported', evidence: 'Python' },
+      { requirement: 'FastAPI', status: 'supported', evidence: 'FastAPI' },
+    ],
+  }], batch);
+
+  expect(candidate.category).toBe('Review First');
+  expect(candidate.ai_completed).toBe(true);
+  expect(candidate.decision).toBe('Undecided');
+  expect(candidate.requirements).toHaveLength(2);
+
+  const reviewed = updateReview([candidate], candidate.id, {
+    category: 'Needs Review',
+    decision: 'Reviewed',
+  });
+
+  expect(reviewed[0].category).toBe('Needs Review');
+  expect(reviewed[0].decision).toBe('Reviewed');
+});
+
+test('missing or unrecognized AI category defaults to human review', () => {
+  const [candidate] = attachOriginals([{
+    ...parsed,
+    category: 'Needs Review',
+    ai_completed: false,
+  }], batch);
+
+  expect(candidate.category).toBe('Needs Review');
+  expect(candidate.decision).toBe('Undecided');
+});

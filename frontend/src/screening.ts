@@ -7,6 +7,15 @@ export type ParsedCandidate = {
   filename: string;
   summary: string;
   evidence: string;
+  category?: ReviewCategory;
+  ai_completed?: boolean;
+  supported_count?: number;
+  total_requirements?: number;
+  requirements?: {
+    requirement: string;
+    status: 'supported' | 'uncertain' | 'not_met';
+    evidence: string;
+  }[];
 };
 export type Candidate = ParsedCandidate & {
   original: File;
@@ -22,7 +31,12 @@ export function attachOriginals(parsed: ParsedCandidate[], batch: File[]): Candi
     if (!Number.isInteger(index) || index < 0 || !batch[index]) {
       throw new Error('The API returned an invalid resume reference. Please try again.');
     }
-    return { ...candidate, original: batch[index], category: 'Needs Review', decision: 'Undecided' };
+    return {
+      ...candidate,
+      original: batch[index],
+      category: candidate.category === 'Review First' ? 'Review First' : 'Needs Review',
+      decision: 'Undecided',
+    };
   });
 }
 

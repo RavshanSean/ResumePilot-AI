@@ -7,7 +7,7 @@ test('starts empty with two manual categories, no sidebar, and disabled analysis
   const html = renderToStaticMarkup(<App/>);
   expect(html).toContain('Review First');
   expect(html).toContain('Needs Review');
-  expect(html).toContain('Ollama matching is not connected');
+  expect(html).toContain('AI-assisted screening');
   expect(html).toMatch(/<button[^>]*class="analyze"[^>]*disabled/);
   expect(html).not.toContain('<aside');
   expect(html).not.toContain('Alex Morgan');
