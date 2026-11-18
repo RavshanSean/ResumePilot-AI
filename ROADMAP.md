@@ -97,3 +97,13 @@ Complete before accepting live payments or launching publicly.
 - [x] Preserve completed response replay and reject interrupted request IDs
 - [ ] Durable input storage, worker leases, heartbeats and automatic resume
 - [ ] Production-safe multi-worker reconciliation and deployment orchestration
+
+## Batch 18: Durable queue metadata and worker leases
+- [x] SQLite-backed job records created atomically with batch and credit reservation
+- [x] Exclusive queued-job claim with random fencing token
+- [x] Lease heartbeat and token-checked completion
+- [x] Controlled expired-lease maintenance without automatic rerun
+- [x] Existing synchronous screening flow and frontend unchanged
+- [ ] Secure durable upload storage and actual background worker execution
+- [ ] Transactionally couple worker completion to candidate results and credit ledger
+- [ ] Production-grade multiworker lease recovery and orchestration

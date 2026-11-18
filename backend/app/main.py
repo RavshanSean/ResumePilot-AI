@@ -39,6 +39,8 @@ async def lifespan(app):
     cleanup_old_login_attempts()
     initialize_credits()
     initialize_batch_journal()
+    from app.job_queue import initialize_job_queue
+    initialize_job_queue()
     initialize_billing()
     if os.getenv("RESUMEPILOT_RECOVER_STALE_ON_STARTUP") == "1":
         recover_interrupted_batches()

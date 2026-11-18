@@ -84,6 +84,8 @@ def complete_batch(user_id, request_id, response):
         )
         if result.rowcount != 1:
             raise RuntimeError('Batch journal was not in processing state.')
+        # Synchronous endpoint completes the job without acquiring a worker lease.
+        db.execute("UPDATE analysis_jobs SET state='completed',lease_token=NULL,lease_until=NULL,updated_at=? WHERE user_id=? AND request_id=? AND state IN ('queued','leased')", (int(time.time()),user_id,request_id))
 
 
 def abandon_unreserved_batch(user_id, request_id):
@@ -145,6 +147,8 @@ def claim_and_reserve(user_id, request_id, fingerprint, count):
             "INSERT INTO analysis_batches(user_id,request_id,fingerprint,state,created_at) VALUES(?,?,?,'processing',?)",
             (user_id, request_id, fingerprint, now),
         )
+        from app.job_queue import enqueue_in_transaction
+        enqueue_in_transaction(db, user_id, request_id, now)
     return None
 
 
@@ -185,5 +189,6 @@ def recover_interrupted_batches(now=None, max_age_seconds=86400):
                 "UPDATE analysis_batches SET state='interrupted' WHERE user_id=? AND request_id=? AND state='processing'",
                 (user_id, request_id),
             )
+            db.execute("UPDATE analysis_jobs SET state='interrupted',lease_token=NULL,lease_until=NULL,updated_at=? WHERE user_id=? AND request_id=? AND state!='completed'", (now,user_id,request_id))
             recovered += 1
     return {'interrupted_batches': recovered, 'refunded_credits': refunded}
