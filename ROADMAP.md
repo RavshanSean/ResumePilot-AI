@@ -89,3 +89,11 @@ Complete before accepting live payments or launching publicly.
 - [x] Reject changed inputs and concurrent duplicate submissions
 - [ ] Atomic journal and credit reservation, crash recovery, worker leases
 - [ ] Privacy retention policy for stored candidate evidence
+
+## Batch 17: Atomic claims and controlled crash reconciliation
+- [x] Reserve credits and create batch journal in one SQLite transaction
+- [x] Mark stale in-progress batches interrupted under controlled maintenance
+- [x] Refund only still-reserved credits, once; preserve completed charges
+- [x] Preserve completed response replay and reject interrupted request IDs
+- [ ] Durable input storage, worker leases, heartbeats and automatic resume
+- [ ] Production-safe multi-worker reconciliation and deployment orchestration

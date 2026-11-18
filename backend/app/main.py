@@ -5,6 +5,7 @@ import io
 from app.batch_journal import (
     initialize_batch_journal, fingerprint_batch, begin_batch,
     complete_batch, abandon_unreserved_batch,
+    claim_and_reserve, recover_interrupted_batches,
 )
 import logging
 import time
@@ -40,7 +41,7 @@ async def lifespan(app):
     initialize_batch_journal()
     initialize_billing()
     if os.getenv("RESUMEPILOT_RECOVER_STALE_ON_STARTUP") == "1":
-        recover_stale_reservations()
+        recover_interrupted_batches()
     yield
 
 
@@ -207,16 +208,11 @@ async def analyze(
             uploads.append((file.filename or "Resume", data))
             await file.seek(0)
         fingerprint = fingerprint_batch(requirements, uploads)
-        replay = begin_batch(user["id"], request_id, fingerprint)
+        replay = claim_and_reserve(user["id"], request_id, fingerprint, len(files))
         if replay is not None:
             for file in files:
                 await file.close()
             return replay
-        try:
-            reserve_batch(user["id"], request_id, len(files))
-        except Exception:
-            abandon_unreserved_batch(user["id"], request_id)
-            raise
 
     started = time.monotonic()
 
