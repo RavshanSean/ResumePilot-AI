@@ -19,6 +19,7 @@ from app.credits import (
     initialize_credits,
     reserve,
     finish,
+    recover_stale_reservations,
 )
 from contextlib import asynccontextmanager
 import os
@@ -27,6 +28,8 @@ import os
 async def lifespan(app):
     initialize_database()
     initialize_credits()
+    if os.getenv("RESUMEPILOT_RECOVER_STALE_ON_STARTUP") == "1":
+        recover_stale_reservations()
     yield
 
 
@@ -243,6 +246,9 @@ async def analyze(
             })
 
         except HTTPException:
+            if reserved:
+                finish(user["id"], credit_request, False)
+                reserved = False
             raise
 
         except ValueError as exc:

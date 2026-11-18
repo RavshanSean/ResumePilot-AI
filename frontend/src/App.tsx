@@ -95,7 +95,13 @@ export default function App({ token = '' }: { token?: string }) {
         body: data,
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!response.ok) throw new Error('Could not process resumes. Check the local backend and upload limits.');
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        const message = typeof payload?.detail === 'string'
+          ? payload.detail
+          : 'Could not process resumes. Check the backend and upload limits.';
+        throw new Error(message);
+      }
       const result = await response.json();
       setCandidates(attachOriginals(result.candidates, batch));
       setErrors(result.errors.map((error: { filename: string; message: string }) => `${error.filename}: ${error.message}`));

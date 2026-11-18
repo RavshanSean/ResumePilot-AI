@@ -130,3 +130,42 @@ def get_balance(user=Depends(current_user)):
         "balance": balance(user["id"]),
         "unit": "successful_ai_resume_analysis",
     }
+
+
+# Development recovery window. Long-running production jobs will need
+# durable worker leases and reconciliation before this can be relied on.
+RECOVERY_SECONDS = 24 * 60 * 60
+
+
+def recover_stale_reservations(now=None):
+    """Refund stale reservations once, preserving completed charges.
+
+    Call only during controlled startup when no older workers are active.
+    """
+    now = int(time.time()) if now is None else int(now)
+    cutoff = now - RECOVERY_SECONDS
+
+    with connection() as db:
+        db.execute("BEGIN IMMEDIATE")
+        rows = db.execute(
+            """SELECT user_id, request_id FROM credit_operations
+               WHERE state='reserved' AND created_at<?""",
+            (cutoff,),
+        ).fetchall()
+
+        for row in rows:
+            changed = db.execute(
+                """UPDATE credit_operations SET state='released'
+                   WHERE user_id=? AND request_id=?
+                   AND state='reserved'""",
+                (row["user_id"], row["request_id"]),
+            )
+
+            if changed.rowcount == 1:
+                db.execute(
+                    """UPDATE credit_accounts SET balance=balance+1
+                       WHERE user_id=?""",
+                    (row["user_id"],),
+                )
+
+        return len(rows)

@@ -192,3 +192,60 @@ def test_failed_ai_does_not_charge(account, monkeypatch):
     assert response.status_code == 200
     assert response.json()["candidates"][0]["ai_completed"] is False
     assert credits.balance(user_id) == 5
+
+
+
+def test_stale_reservation_is_refunded_once(account):
+    _, user_id, _ = account
+
+    credits.reserve(user_id, "stale-request")
+    assert credits.balance(user_id) == 4
+
+    with credits.connection() as db:
+        db.execute(
+            """UPDATE credit_operations SET created_at=?
+               WHERE user_id=? AND request_id=?""",
+            (100, user_id, "stale-request"),
+        )
+
+    assert credits.recover_stale_reservations(
+        now=100 + credits.RECOVERY_SECONDS + 1
+    ) == 1
+
+    assert credits.balance(user_id) == 5
+
+    assert credits.recover_stale_reservations(
+        now=100 + credits.RECOVERY_SECONDS + 1
+    ) == 0
+
+    assert credits.balance(user_id) == 5
+
+
+def test_recent_reservation_is_not_refunded(account):
+    _, user_id, _ = account
+
+    credits.reserve(user_id, "active-request")
+    assert credits.balance(user_id) == 4
+
+    assert credits.recover_stale_reservations() == 0
+    assert credits.balance(user_id) == 4
+
+
+def test_completed_charge_is_never_refunded_by_recovery(account):
+    _, user_id, _ = account
+
+    credits.reserve(user_id, "completed-request")
+    credits.finish(user_id, "completed-request", True)
+
+    with credits.connection() as db:
+        db.execute(
+            """UPDATE credit_operations SET created_at=?
+               WHERE user_id=? AND request_id=?""",
+            (100, user_id, "completed-request"),
+        )
+
+    assert credits.recover_stale_reservations(
+        now=100 + credits.RECOVERY_SECONDS + 1
+    ) == 0
+
+    assert credits.balance(user_id) == 4
