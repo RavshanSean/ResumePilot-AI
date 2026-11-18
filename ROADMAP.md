@@ -73,3 +73,13 @@ Complete before accepting live payments or launching publicly.
 - [ ] Complete hiring-AI compliance and security review
 - [ ] Test payment reconciliation and refund workflows
 - [ ] Approve and enable live payments only after launch checks
+
+## Batch 15 account recovery UI
+
+- [x] Forgot-password screen and request workflow
+- [x] Reset-password screen and confirmation
+- [x] Email verification screen and account status
+- [x] Recovery UI regression tests
+- [ ] Configure real SMTP delivery and sender authentication
+- [ ] Production recovery abuse protection and delivery monitoring
+- [ ] Decide and enforce verification policy after testing

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Sparkles, LoaderCircle } from 'lucide-react';
 import App from './App';
 import './auth.css';
+import RecoveryPanel, { recoveryRoute } from './RecoveryPanel';
 
 type User = { id: string; email: string };
 type Session = {
@@ -10,6 +11,10 @@ type Session = {
 };
 
 export default function AuthGate() {
+  const route = typeof window === 'undefined'
+    ? null : recoveryRoute(window.location.pathname);
+  const [verification, setVerification] = useState<boolean | null>(null);
+  const [verificationMessage, setVerificationMessage] = useState('');
   const [session, setSession] = useState<Session | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -45,6 +50,7 @@ export default function AuthGate() {
       }
 
       setSession(result as Session);
+      void checkVerification(result.access_token);
       setPassword('');
     } catch (cause) {
       setError(
@@ -57,10 +63,45 @@ export default function AuthGate() {
     }
   }
 
+  async function checkVerification(token: string) {
+    try {
+      const response = await fetch('/api/auth/verification-status', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const result = await response.json();
+        setVerification(Boolean(result.email_verified));
+      }
+    } catch {
+      setVerification(null);
+    }
+  }
+
+  async function requestVerification() {
+    if (!session) return;
+    setVerificationMessage('');
+    try {
+      const response = await fetch('/api/auth/request-verification', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const result = await response.json();
+      setVerificationMessage(
+        typeof result.message === 'string'
+          ? result.message : 'Could not request verification.',
+      );
+      await checkVerification(session.access_token);
+    } catch {
+      setVerificationMessage('Email service is currently unavailable.');
+    }
+  }
+
   async function logout() {
     const token = session?.access_token;
     // Immediately discard the local credential.
     setSession(null);
+    setVerification(null);
+    setVerificationMessage('');
     setPassword('');
 
     if (token) {
@@ -75,10 +116,18 @@ export default function AuthGate() {
     }
   }
 
+  if (route) return <RecoveryPanel mode={route} />;
+
   if (session) {
     return <>
       <div className="auth-session-bar">
         <span>Signed in as {session.user?.email || email}</span>
+        {verification === false && <button type="button"
+          onClick={() => void requestVerification()}>
+          Verify email
+        </button>}
+        {verification === true && <span>Email verified</span>}
+        {verificationMessage && <span role="status">{verificationMessage}</span>}
         <button type="button" onClick={logout}>Log out</button>
       </div>
       <App token={session.access_token} />
@@ -135,6 +184,9 @@ export default function AuthGate() {
         </button>
       </form>
 
+      {!register && <p className="auth-switch">
+        <a href="/forgot-password">Forgot password?</a>
+      </p>}
       <p className="auth-switch">
         {register ? 'Already have an account?' : 'New to ResumePilot?'}
         {' '}
