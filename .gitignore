@@ -8,3 +8,4 @@ __pycache__/
 .DS_Store
 
 *.tsbuildinfo
+\n*.db\n*.db-shm\n*.db-wal\n*.sqlite3

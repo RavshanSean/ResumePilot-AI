@@ -8,13 +8,39 @@ from pathlib import Path
 
 import pymupdf
 from docx import Document
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.matcher import MatchingError, fallback_result, match_resume
+from app.auth import router as auth_router, initialize_database, current_user
+from contextlib import asynccontextmanager
+import os
 
-app = FastAPI(title="ResumePilot AI", version="0.2.0")
+@asynccontextmanager
+async def lifespan(app):
+    initialize_database()
+    yield
+
+
+app = FastAPI(
+    title="ResumePilot AI",
+    version="0.3.0",
+    lifespan=lifespan,
+)
+app.include_router(auth_router)
+
+
+def screening_access(user=Depends(current_user)):
+    return user
+
+
+SCREENING_DEPENDENCIES = (
+    [Depends(screening_access)]
+    if os.getenv("RESUMEPILOT_REQUIRE_AUTH", "0") == "1"
+    else []
+)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -104,7 +130,7 @@ def health():
     }
 
 
-@app.post("/api/analyze")
+@app.post("/api/analyze", dependencies=SCREENING_DEPENDENCIES)
 async def analyze(
     files: list[UploadFile] = File(...),
     requirements: str = Form(""),
