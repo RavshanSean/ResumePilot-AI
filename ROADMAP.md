@@ -83,3 +83,9 @@ Complete before accepting live payments or launching publicly.
 - [ ] Configure real SMTP delivery and sender authentication
 - [ ] Production recovery abuse protection and delivery monitoring
 - [ ] Decide and enforce verification policy after testing
+
+## Batch 16: Safe replay
+- [x] Persist completed analysis results for identical request IDs
+- [x] Reject changed inputs and concurrent duplicate submissions
+- [ ] Atomic journal and credit reservation, crash recovery, worker leases
+- [ ] Privacy retention policy for stored candidate evidence

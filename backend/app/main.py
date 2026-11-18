@@ -2,6 +2,10 @@
 """ResumePilot AI: local, evidence-based resume screening API."""
 
 import io
+from app.batch_journal import (
+    initialize_batch_journal, fingerprint_batch, begin_batch,
+    complete_batch, abandon_unreserved_batch,
+)
 import logging
 import time
 from pathlib import Path
@@ -33,6 +37,7 @@ async def lifespan(app):
     cleanup_expired_sessions()
     cleanup_old_login_attempts()
     initialize_credits()
+    initialize_batch_journal()
     initialize_billing()
     if os.getenv("RESUMEPILOT_RECOVER_STALE_ON_STARTUP") == "1":
         recover_stale_reservations()
@@ -196,7 +201,22 @@ async def analyze(
     # Reserve every file's maximum charge in one transaction.
     # Insufficient balances fail before any resume reaches AI.
     if chargeable:
-        reserve_batch(user["id"], request_id, len(files))
+        uploads = []
+        for file in files:
+            data = await file.read(MAX_SIZE + 1)
+            uploads.append((file.filename or "Resume", data))
+            await file.seek(0)
+        fingerprint = fingerprint_batch(requirements, uploads)
+        replay = begin_batch(user["id"], request_id, fingerprint)
+        if replay is not None:
+            for file in files:
+                await file.close()
+            return replay
+        try:
+            reserve_batch(user["id"], request_id, len(files))
+        except Exception:
+            abandon_unreserved_batch(user["id"], request_id)
+            raise
 
     started = time.monotonic()
 
@@ -311,7 +331,7 @@ async def analyze(
         int((time.monotonic() - started) * 1000),
     )
 
-    return {
+    response = {
         "mode": "ai",
         "notice": (
             "AI-assisted review priorities only. "
@@ -320,3 +340,7 @@ async def analyze(
         "candidates": candidates,
         "errors": errors,
     }
+
+    if chargeable:
+        complete_batch(user["id"], request_id, response)
+    return response
