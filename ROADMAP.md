@@ -124,3 +124,9 @@ Complete before accepting live payments or launching publicly.
 - [ ] Coordinate file deletion and expired manifests before retention cleanup
 - [ ] Crash-orphan reconciliation and durable encryption at rest
 - [ ] Wire staging into HTTP submission and implement fenced worker execution
+
+## Batch 21: Fenced background-worker input preparation
+- [x] Validate current worker lease before reading staged resume bytes
+- [x] Verify integrity and batch fingerprint; recheck lease after disk I/O
+- [x] Keep AI execution and credit settlement disabled pending atomic fenced commits
+- [ ] Add worker execution, atomic results and credit settlement before activation
