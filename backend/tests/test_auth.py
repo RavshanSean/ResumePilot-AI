@@ -502,3 +502,76 @@ def test_success_does_not_erase_source_failure_history(client):
         ).fetchone()
 
     assert row["failed_count"] == 1
+
+
+
+def test_cleanup_removes_stale_login_records(client):
+    with auth.connection() as db:
+        db.execute(
+            """INSERT INTO auth_login_attempts
+               (email,failed_count,window_start,locked_until)
+               VALUES(?,?,?,?)""",
+            ("stale@example.com", 2, 1, 0),
+        )
+        db.execute(
+            """INSERT INTO auth_source_attempts
+               (source_hash,failed_count,window_start,locked_until)
+               VALUES(?,?,?,?)""",
+            ("stale-source", 2, 1, 0),
+        )
+
+    result = auth.cleanup_old_login_attempts()
+
+    assert result["auth_login_attempts"] == 1
+    assert result["auth_source_attempts"] == 1
+
+
+def test_cleanup_preserves_active_lockouts(client):
+    import time
+
+    now = int(time.time())
+
+    with auth.connection() as db:
+        db.execute(
+            """INSERT INTO auth_login_attempts
+               (email,failed_count,window_start,locked_until)
+               VALUES(?,?,?,?)""",
+            ("locked@example.com", 5, 1, now + 600),
+        )
+        db.execute(
+            """INSERT INTO auth_source_attempts
+               (source_hash,failed_count,window_start,locked_until)
+               VALUES(?,?,?,?)""",
+            ("locked-source", 20, 1, now + 600),
+        )
+
+    result = auth.cleanup_old_login_attempts(now=now)
+
+    assert result["auth_login_attempts"] == 0
+    assert result["auth_source_attempts"] == 0
+
+
+def test_cleanup_preserves_recent_failures(client):
+    import time
+
+    now = int(time.time())
+
+    with auth.connection() as db:
+        db.execute(
+            """INSERT INTO auth_login_attempts
+               (email,failed_count,window_start,locked_until)
+               VALUES(?,?,?,?)""",
+            ("recent@example.com", 2, now - 30, 0),
+        )
+
+    result = auth.cleanup_old_login_attempts(now=now)
+
+    assert result["auth_login_attempts"] == 0
+
+    with auth.connection() as db:
+        row = db.execute(
+            "SELECT failed_count FROM auth_login_attempts WHERE email=?",
+            ("recent@example.com",),
+        ).fetchone()
+
+    assert row["failed_count"] == 2

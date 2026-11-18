@@ -129,6 +129,38 @@ def record_failure(db, table, key_column, key, attempt,
 
 
 
+
+def cleanup_old_login_attempts(now=None):
+    """Delete stale failure records, preserving active lockouts."""
+    now = int(time.time()) if now is None else int(now)
+
+    # Retain at least two full windows of inactive history.
+    retention = 2 * max(
+        LOGIN_WINDOW_SECONDS,
+        LOGIN_LOCK_SECONDS,
+        SOURCE_WINDOW_SECONDS,
+        SOURCE_LOCK_SECONDS,
+    )
+    cutoff = now - retention
+    deleted = {}
+
+    with connection() as db:
+        for table in (
+            "auth_login_attempts",
+            "auth_source_attempts",
+        ):
+            result = db.execute(
+                f"""DELETE FROM {table}
+                    WHERE window_start < ?
+                    AND locked_until <= ?""",
+                (cutoff, now),
+            )
+            deleted[table] = result.rowcount
+
+    return deleted
+
+
+
 def cleanup_expired_sessions(now=None):
     """Remove expired sessions without touching active sessions."""
     now = int(time.time()) if now is None else int(now)

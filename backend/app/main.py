@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.matcher import MatchingError, fallback_result, match_resume
-from app.auth import router as auth_router, initialize_database, current_user, cleanup_expired_sessions
+from app.auth import router as auth_router, initialize_database, current_user, cleanup_expired_sessions, cleanup_old_login_attempts
 from app.billing import router as billing_router, initialize_billing
 from app.credits import (
     router as credits_router,
@@ -30,6 +30,7 @@ import os
 async def lifespan(app):
     initialize_database()
     cleanup_expired_sessions()
+    cleanup_old_login_attempts()
     initialize_credits()
     initialize_billing()
     if os.getenv("RESUMEPILOT_RECOVER_STALE_ON_STARTUP") == "1":
