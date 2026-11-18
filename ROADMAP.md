@@ -24,9 +24,16 @@
 - [x] Stripe test-mode Checkout backend (disabled by default)
 - [x] Signature-verified paid Checkout event handling and duplicate grant protection (development)
 - [ ] End-to-end Stripe test-mode integration and payment reconciliation
-- [x] Read-only local payment consistency report (development)\n- [ ] Stripe-side payment reconciliation and refunds
-- [x] Password change and revoke-all-sessions endpoints\n- [x] Expired session cleanup on startup\n- [ ] Password recovery and email verification
-- [x] Persistent per-email login attempt lockout (development)\n- [x] Direct-peer IP login failure limit (development)\n- [ ] Trusted proxy configuration and production abuse controls\n- [x] Stale login-attempt cleanup (development)
+- [x] Read-only local payment consistency report (development)
+- [ ] Stripe-side payment reconciliation and refunds
+- [x] Password change and revoke-all-sessions endpoints
+- [x] Expired session cleanup on startup
+- [x] Password reset and email verification backend (SMTP delivery configurable; development)
+- [ ] Production email provider setup, delivery testing, frontend recovery screens and verification enforcement
+- [x] Persistent per-email login attempt lockout (development)
+- [x] Direct-peer IP login failure limit (development)
+- [ ] Trusted proxy configuration and production abuse controls
+- [x] Stale login-attempt cleanup (development)
 - [ ] Rate limits, security testing, and privacy hardening
 - [ ] Production PostgreSQL and migrations
 - [ ] Scalability, observability, and deployment

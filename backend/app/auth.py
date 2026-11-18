@@ -95,6 +95,22 @@ def initialize_database():
         """)
 
 
+
+def initialize_email_verification():
+    """Add email verification without losing existing accounts."""
+    with connection() as db:
+        columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(users)")
+        }
+        if "email_verified" not in columns:
+            db.execute(
+                "ALTER TABLE users ADD COLUMN "
+                "email_verified INTEGER NOT NULL DEFAULT 0"
+            )
+
+
+
 def source_digest(request: Request):
     """Hash the directly connected peer IP, not spoofable proxy headers."""
     address = request.client.host if request.client else "unknown"

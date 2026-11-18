@@ -13,7 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.matcher import MatchingError, fallback_result, match_resume
-from app.auth import router as auth_router, initialize_database, current_user, cleanup_expired_sessions, cleanup_old_login_attempts
+from app.auth import router as auth_router, initialize_database, current_user, cleanup_expired_sessions, cleanup_old_login_attempts, initialize_email_verification
+from app.account_recovery import (router as recovery_router, initialize_recovery, cleanup_expired_tokens)
 from app.billing import router as billing_router, initialize_billing
 from app.credits import (
     router as credits_router,
@@ -44,6 +45,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(recovery_router)
 app.include_router(credits_router)
 app.include_router(billing_router)
 
