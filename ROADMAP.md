@@ -107,3 +107,11 @@ Complete before accepting live payments or launching publicly.
 - [ ] Secure durable upload storage and actual background worker execution
 - [ ] Transactionally couple worker completion to candidate results and credit ledger
 - [ ] Production-grade multiworker lease recovery and orchestration
+
+## Batch 19: Private temporary resume storage foundation
+- [x] Private local file permissions, opaque identifiers and per-account access checks
+- [x] Bounded file sizes, integrity verification and expiration metadata
+- [x] Controlled expired-file cleanup and regression tests
+- [ ] Connect storage to asynchronous submission and worker execution
+- [ ] Encrypted production storage, retention/deletion policy, orphan-file reconciliation
+- [ ] Filesystem access controls, monitoring and backup/deletion verification
