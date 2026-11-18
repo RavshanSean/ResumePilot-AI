@@ -14,12 +14,19 @@ from starlette.concurrency import run_in_threadpool
 
 from app.matcher import MatchingError, fallback_result, match_resume
 from app.auth import router as auth_router, initialize_database, current_user
+from app.credits import (
+    router as credits_router,
+    initialize_credits,
+    reserve,
+    finish,
+)
 from contextlib import asynccontextmanager
 import os
 
 @asynccontextmanager
 async def lifespan(app):
     initialize_database()
+    initialize_credits()
     yield
 
 
@@ -29,6 +36,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(credits_router)
 
 
 def screening_access(
@@ -136,10 +144,12 @@ def health():
     }
 
 
-@app.post("/api/analyze", dependencies=SCREENING_DEPENDENCIES)
+@app.post("/api/analyze")
 async def analyze(
     files: list[UploadFile] = File(...),
     requirements: str = Form(""),
+    request_id: str = Form(""),
+    user=Depends(screening_access),
 ):
     """Parse resumes, evaluate essentials, and suggest review priority."""
 
@@ -161,12 +171,19 @@ async def analyze(
             detail="Enter essential job requirements before analysis.",
         )
 
+    if user["id"] != "test-only":
+        if not request_id or len(request_id) > 100:
+            raise HTTPException(
+                400, "A unique analysis request ID is required."
+            )
+
     started = time.monotonic()
 
     candidates = []
     errors = []
 
     for index, file in enumerate(files):
+        reserved = False
         filename = file.filename or "Resume"
 
         try:
@@ -178,6 +195,14 @@ async def analyze(
                 data,
             )
 
+            credit_request = f"{request_id}:{index}"
+            chargeable = user["id"] != "test-only"
+            reserved = False
+
+            if chargeable:
+                reserve(user["id"], credit_request)
+                reserved = True
+
             try:
                 assessment = await match_resume(
                     requirements=requirements,
@@ -185,8 +210,14 @@ async def analyze(
                 )
 
                 ai_completed = True
+                if reserved:
+                    finish(user["id"], credit_request, True)
+                    reserved = False
 
             except MatchingError:
+                if reserved:
+                    finish(user["id"], credit_request, False)
+                    reserved = False
                 logger.warning(
                     "AI matching unavailable: batch_index=%d",
                     index,
@@ -211,13 +242,22 @@ async def analyze(
                 "demo": False,
             })
 
+        except HTTPException:
+            raise
+
         except ValueError as exc:
+            if locals().get("reserved", False):
+                finish(user["id"], credit_request, False)
+                reserved = False
             errors.append({
                 "filename": filename,
                 "message": str(exc),
             })
 
         except Exception as exc:
+            if locals().get("reserved", False):
+                finish(user["id"], credit_request, False)
+                reserved = False
             logger.error(
                 "Resume processing failed: "
                 "batch_index=%d error_type=%s",

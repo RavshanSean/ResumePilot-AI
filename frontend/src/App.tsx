@@ -44,6 +44,26 @@ export default function App({ token = '' }: { token?: string }) {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [credits, setCredits] = useState<number | null>(null);
+
+  async function refreshCredits() {
+    if (!token) return;
+    try {
+      const response = await fetch('/api/credits/balance', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const result = await response.json();
+        setCredits(result.balance);
+      }
+    } catch {
+      // Balance is informational; backend enforces all credit limits.
+    }
+  }
+
+  useEffect(() => {
+    void refreshCredits();
+  }, [token]);
   const input = useRef<HTMLInputElement>(null);
   const folder = useRef<HTMLInputElement>(null);
 
@@ -68,6 +88,7 @@ export default function App({ token = '' }: { token?: string }) {
     const data = new FormData();
     batch.forEach(file => data.append('files', file));
     data.append('requirements', requirements);
+    data.append('request_id', crypto.randomUUID());
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -82,12 +103,16 @@ export default function App({ token = '' }: { token?: string }) {
       setErrors([error instanceof Error ? error.message : 'Could not connect to the local API.']);
     } finally {
       setBusy(false);
+      await refreshCredits();
     }
   }
 
   return <main className="workspace">
     <header className="brand"><span className="brand-icon"><Sparkles size={25} aria-hidden="true"/></span><h1>ResumePilot <span>AI</span></h1></header>
     <section className="inputs" aria-label="Resume screening inputs">
+      {credits !== null && <p className="disclosure" role="status">
+        Available AI analysis credits: <strong>{credits}</strong>
+      </p>}
       <label className="job-label" htmlFor="requirements">Job requirements</label>
       <textarea id="requirements" maxLength={20000} disabled={busy} value={requirements} onChange={e => setRequirements(e.target.value)} placeholder="Describe the role, essential skills, and experience…"/>
       <div className="dropzone" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}>

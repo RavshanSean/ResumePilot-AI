@@ -27,7 +27,7 @@ def test_anonymous_screening_is_rejected(tmp_path, monkeypatch):
     with TestClient(main.app) as client:
         response = client.post(
             "/api/analyze",
-            data={"requirements": "Python"},
+            data={"requirements": "Python", "request_id": "anonymous-test"},
             files={
                 "files": (
                     "resume.pdf",
@@ -77,7 +77,7 @@ def test_authenticated_screening_works(tmp_path, monkeypatch):
         response = client.post(
             "/api/analyze",
             headers={"Authorization": f"Bearer {token}"},
-            data={"requirements": "Python"},
+            data={"requirements": "Python", "request_id": "authenticated-test"},
             files={
                 "files": (
                     "resume.pdf",
@@ -98,7 +98,7 @@ def test_authenticated_screening_works(tmp_path, monkeypatch):
         denied = client.post(
             "/api/analyze",
             headers={"Authorization": f"Bearer {token}"},
-            data={"requirements": "Python"},
+            data={"requirements": "Python", "request_id": "logged-out-test"},
             files={
                 "files": (
                     "resume.pdf",
@@ -122,7 +122,7 @@ def test_invalid_token_is_rejected(tmp_path, monkeypatch):
         response = client.post(
             "/api/analyze",
             headers={"Authorization": "Bearer invalid-token"},
-            data={"requirements": "Python"},
+            data={"requirements": "Python", "request_id": "invalid-token-test"},
             files={
                 "files": (
                     "resume.pdf",
