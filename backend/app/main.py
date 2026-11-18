@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.matcher import MatchingError, fallback_result, match_resume
 from app.auth import router as auth_router, initialize_database, current_user
+from app.billing import router as billing_router, initialize_billing
 from app.credits import (
     router as credits_router,
     initialize_credits,
@@ -29,6 +30,7 @@ import os
 async def lifespan(app):
     initialize_database()
     initialize_credits()
+    initialize_billing()
     if os.getenv("RESUMEPILOT_RECOVER_STALE_ON_STARTUP") == "1":
         recover_stale_reservations()
     yield
@@ -41,6 +43,7 @@ app = FastAPI(
 )
 app.include_router(auth_router)
 app.include_router(credits_router)
+app.include_router(billing_router)
 
 
 def screening_access(

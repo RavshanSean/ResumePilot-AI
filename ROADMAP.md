@@ -21,8 +21,9 @@
 - [ ] Durable job queue and worker leases
 - [ ] Safe recovery and reconciliation across worker crashes
 - [x] Atomic preflight credit availability and batch reservation
-- [ ] Stripe hosted Checkout
-- [ ] Verified Stripe webhooks and exactly-once credit grants
+- [x] Stripe test-mode Checkout backend (disabled by default)
+- [x] Signature-verified paid Checkout event handling and duplicate grant protection (development)
+- [ ] End-to-end Stripe test-mode integration and payment reconciliation
 - [ ] Payment reconciliation and refunds
 - [ ] Password recovery and email verification
 - [ ] Rate limits, security testing, and privacy hardening
