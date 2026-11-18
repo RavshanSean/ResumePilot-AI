@@ -130,3 +130,11 @@ Complete before accepting live payments or launching publicly.
 - [x] Verify integrity and batch fingerprint; recheck lease after disk I/O
 - [x] Keep AI execution and credit settlement disabled pending atomic fenced commits
 - [ ] Add worker execution, atomic results and credit settlement before activation
+
+## Batch 22: Atomic fenced worker settlement
+- [x] Transactionally settle per-file credits, batch replay response and queue completion
+- [x] Reject stale or incorrect worker tokens and mismatched input counts
+- [x] Roll back all changes on incomplete credit reservations
+- [x] Preserve synchronous API and frontend without activating workers
+- [ ] Validate AI outcomes in actual background worker and add lifecycle orchestration
+- [ ] Ensure staged-file cleanup, crash reconciliation and production-safe encryption
