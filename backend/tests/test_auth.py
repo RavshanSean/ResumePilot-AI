@@ -430,3 +430,75 @@ def test_unknown_email_is_rate_limited(client):
     assert client.post(
         "/api/auth/login", json=unknown
     ).status_code == 429
+
+
+
+def test_source_limit_across_different_emails(client):
+    for i in range(auth.SOURCE_MAX_FAILURES):
+        response = client.post(
+            "/api/auth/login",
+            json=credentials(f"unknown{i}@example.com"),
+        )
+        assert response.status_code == 401
+
+    blocked = client.post(
+        "/api/auth/login",
+        json=credentials("another@example.com"),
+    )
+    assert blocked.status_code == 429
+
+
+def test_source_limit_persists_in_database(client):
+    for i in range(auth.SOURCE_MAX_FAILURES):
+        client.post(
+            "/api/auth/login",
+            json=credentials(f"attempt{i}@example.com"),
+        )
+
+    with auth.connection() as db:
+        row = db.execute(
+            "SELECT failed_count,locked_until FROM auth_source_attempts"
+        ).fetchone()
+
+    assert row["failed_count"] == auth.SOURCE_MAX_FAILURES
+    assert row["locked_until"] > 0
+
+
+def test_source_lock_expires(client):
+    for i in range(auth.SOURCE_MAX_FAILURES):
+        client.post(
+            "/api/auth/login",
+            json=credentials(f"attempt{i}@example.com"),
+        )
+
+    with auth.connection() as db:
+        db.execute(
+            """UPDATE auth_source_attempts
+               SET locked_until=1,window_start=1"""
+        )
+
+    response = client.post(
+        "/api/auth/login",
+        json=credentials("fresh@example.com"),
+    )
+    assert response.status_code == 401
+
+
+def test_success_does_not_erase_source_failure_history(client):
+    client.post("/api/auth/register", json=credentials())
+
+    client.post(
+        "/api/auth/login",
+        json=credentials("unknown@example.com"),
+    )
+
+    assert client.post(
+        "/api/auth/login", json=credentials()
+    ).status_code == 200
+
+    with auth.connection() as db:
+        row = db.execute(
+            "SELECT failed_count FROM auth_source_attempts"
+        ).fetchone()
+
+    assert row["failed_count"] == 1

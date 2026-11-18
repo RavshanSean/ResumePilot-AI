@@ -10,7 +10,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/auth", tags=["accounts"])
@@ -20,6 +20,9 @@ MAX_PASSWORD_BYTES = 1024
 LOGIN_MAX_FAILURES = 5
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_LOCK_SECONDS = 15 * 60
+SOURCE_MAX_FAILURES = 20
+SOURCE_WINDOW_SECONDS = 15 * 60
+SOURCE_LOCK_SECONDS = 15 * 60
 
 
 def database_path():
@@ -81,6 +84,49 @@ def initialize_database():
                 locked_until INTEGER NOT NULL DEFAULT 0
             )
         """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS auth_source_attempts (
+                source_hash TEXT PRIMARY KEY,
+                failed_count INTEGER NOT NULL DEFAULT 0,
+                window_start INTEGER NOT NULL,
+                locked_until INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+
+
+def source_digest(request: Request):
+    """Hash the directly connected peer IP, not spoofable proxy headers."""
+    address = request.client.host if request.client else "unknown"
+    return hashlib.sha256(address.encode("utf-8")).hexdigest()
+
+
+def record_failure(db, table, key_column, key, attempt,
+                   now, limit, window_seconds, lock_seconds):
+    if (
+        attempt is None
+        or now - attempt["window_start"] >= window_seconds
+    ):
+        count = 1
+        window_start = now
+    else:
+        count = attempt["failed_count"] + 1
+        window_start = attempt["window_start"]
+
+    locked_until = now + lock_seconds if count >= limit else 0
+
+    # Table and column names are fixed internal constants.
+    db.execute(
+        f"""INSERT INTO {table}
+            ({key_column},failed_count,window_start,locked_until)
+            VALUES(?,?,?,?)
+            ON CONFLICT({key_column}) DO UPDATE SET
+              failed_count=excluded.failed_count,
+              window_start=excluded.window_start,
+              locked_until=excluded.locked_until""",
+        (key, count, window_start, locked_until),
+    )
+
 
 
 def cleanup_expired_sessions(now=None):
@@ -209,26 +255,37 @@ def register(credentials: Credentials):
 
 
 @router.post("/login")
-def login(credentials: Credentials):
+def login(credentials: Credentials, request: Request):
     email = normalized_email(credentials.email)
+    source = source_digest(request)
     now = int(time.time())
     session = None
     locked = False
 
-    # Serialize attempts so simultaneous requests cannot
-    # bypass the failure threshold.
     with connection() as db:
         db.execute("BEGIN IMMEDIATE")
 
         attempt = db.execute(
-            """SELECT failed_count, window_start, locked_until
+            """SELECT failed_count,window_start,locked_until
                FROM auth_login_attempts WHERE email=?""",
             (email,),
         ).fetchone()
 
-        if attempt and attempt["locked_until"] > now:
-            locked = True
-        else:
+        source_attempt = db.execute(
+            """SELECT failed_count,window_start,locked_until
+               FROM auth_source_attempts WHERE source_hash=?""",
+            (source,),
+        ).fetchone()
+
+        locked = bool(
+            (attempt and attempt["locked_until"] > now)
+            or (
+                source_attempt
+                and source_attempt["locked_until"] > now
+            )
+        )
+
+        if not locked:
             row = db.execute(
                 "SELECT id,password_hash FROM users WHERE email=?",
                 (email,),
@@ -246,41 +303,27 @@ def login(credentials: Credentials):
                     "DELETE FROM auth_login_attempts WHERE email=?",
                     (email,),
                 )
+                # Preserve source-level failure history:
+                # a successful login must not erase abuse
+                # against unrelated email addresses.
                 session = issue_session(db, row["id"])
             else:
-                if (
-                    attempt is None
-                    or now - attempt["window_start"]
-                    >= LOGIN_WINDOW_SECONDS
-                ):
-                    count = 1
-                    window_start = now
-                else:
-                    count = attempt["failed_count"] + 1
-                    window_start = attempt["window_start"]
-
-                locked_until = (
-                    now + LOGIN_LOCK_SECONDS
-                    if count >= LOGIN_MAX_FAILURES
-                    else 0
+                record_failure(
+                    db, "auth_login_attempts", "email",
+                    email, attempt, now, LOGIN_MAX_FAILURES,
+                    LOGIN_WINDOW_SECONDS, LOGIN_LOCK_SECONDS,
                 )
-
-                db.execute(
-                    """INSERT INTO auth_login_attempts
-                       (email,failed_count,window_start,locked_until)
-                       VALUES(?,?,?,?)
-                       ON CONFLICT(email) DO UPDATE SET
-                         failed_count=excluded.failed_count,
-                         window_start=excluded.window_start,
-                         locked_until=excluded.locked_until""",
-                    (email, count, window_start, locked_until),
+                record_failure(
+                    db, "auth_source_attempts", "source_hash",
+                    source, source_attempt, now, SOURCE_MAX_FAILURES,
+                    SOURCE_WINDOW_SECONDS, SOURCE_LOCK_SECONDS,
                 )
 
     if locked:
         raise HTTPException(
             429,
-            "Too many login attempts. Try again in 15 minutes.",
-            headers={"Retry-After": str(LOGIN_LOCK_SECONDS)},
+            "Too many login attempts. Please try again later.",
+            headers={"Retry-After": str(SOURCE_LOCK_SECONDS)},
         )
 
     if session is None:
