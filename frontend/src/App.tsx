@@ -38,7 +38,7 @@ export function CandidateCard({ candidate, onChange }: {
   </article>;
 }
 
-export default function App() {
+export default function App({ token = '' }: { token?: string }) {
   const [files, setFiles] = useState<File[]>([]);
   const [requirements, setRequirements] = useState('');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -69,7 +69,11 @@ export default function App() {
     batch.forEach(file => data.append('files', file));
     data.append('requirements', requirements);
     try {
-      const response = await fetch('/api/analyze', { method: 'POST', body: data });
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        body: data,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!response.ok) throw new Error('Could not process resumes. Check the local backend and upload limits.');
       const result = await response.json();
       setCandidates(attachOriginals(result.candidates, batch));

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pymupdf
 from docx import Document
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
@@ -31,15 +31,21 @@ app = FastAPI(
 app.include_router(auth_router)
 
 
-def screening_access(user=Depends(current_user)):
-    return user
+def screening_access(
+    authorization: str | None = Header(default=None),
+):
+    # Legacy tests may bypass authentication only inside pytest.
+    # Production always requires a valid session.
+    if (
+        os.getenv("PYTEST_CURRENT_TEST")
+        and os.getenv("RESUMEPILOT_TEST_BYPASS_AUTH") == "1"
+    ):
+        return {"id": "test-only", "email": "test@example.invalid"}
+
+    return current_user(authorization)
 
 
-SCREENING_DEPENDENCIES = (
-    [Depends(screening_access)]
-    if os.getenv("RESUMEPILOT_REQUIRE_AUTH", "0") == "1"
-    else []
-)
+SCREENING_DEPENDENCIES = [Depends(screening_access)]
 
 
 app.add_middleware(
