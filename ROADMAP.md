@@ -25,7 +25,7 @@
 - [x] Signature-verified paid Checkout event handling and duplicate grant protection (development)
 - [ ] End-to-end Stripe test-mode integration and payment reconciliation
 - [x] Read-only local payment consistency report (development)\n- [ ] Stripe-side payment reconciliation and refunds
-- [ ] Password recovery and email verification
+- [x] Password change and revoke-all-sessions endpoints\n- [x] Expired session cleanup on startup\n- [ ] Password recovery and email verification
 - [ ] Rate limits, security testing, and privacy hardening
 - [ ] Production PostgreSQL and migrations
 - [ ] Scalability, observability, and deployment

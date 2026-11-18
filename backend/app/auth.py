@@ -72,9 +72,27 @@ def initialize_database():
         """)
 
 
+def cleanup_expired_sessions(now=None):
+    """Remove expired sessions without touching active sessions."""
+    now = int(time.time()) if now is None else int(now)
+    with connection() as db:
+        result = db.execute(
+            "DELETE FROM sessions WHERE expires_at<=?",
+            (now,),
+        )
+        return result.rowcount
+
+
+
 class Credentials(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=12, max_length=1024)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=12, max_length=1024)
+    new_password: str = Field(min_length=12, max_length=1024)
+
 
 
 def normalized_email(email):
@@ -218,3 +236,59 @@ def logout(
         )
 
     return {"success": True}
+
+
+
+@router.post("/logout-all")
+def logout_all(user=Depends(current_user)):
+    """Revoke every session belonging to the authenticated user."""
+    with connection() as db:
+        result = db.execute(
+            "DELETE FROM sessions WHERE user_id=?",
+            (user["id"],),
+        )
+
+    return {"success": True, "sessions_revoked": result.rowcount}
+
+
+@router.post("/change-password")
+def change_password(
+    payload: PasswordChange,
+    user=Depends(current_user),
+):
+    """Verify current password, rotate password, revoke all sessions."""
+    if payload.current_password == payload.new_password:
+        raise HTTPException(
+            400, "New password must differ from current password."
+        )
+
+    # Validate password length before modifying the database.
+    new_hash = hash_password(payload.new_password)
+
+    with connection() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT password_hash FROM users WHERE id=?",
+            (user["id"],),
+        ).fetchone()
+
+        if row is None or not verify_password(
+            payload.current_password, row["password_hash"]
+        ):
+            raise HTTPException(401, "Current password is incorrect.")
+
+        db.execute(
+            "UPDATE users SET password_hash=? WHERE id=?",
+            (new_hash, user["id"]),
+        )
+        db.execute(
+            "DELETE FROM sessions WHERE user_id=?",
+            (user["id"],),
+        )
+        session = issue_session(db, user["id"])
+
+    return {
+        "success": True,
+        "message": "Password changed. All previous sessions revoked.",
+        **session,
+    }
