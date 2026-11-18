@@ -249,3 +249,86 @@ def test_completed_charge_is_never_refunded_by_recovery(account):
     ) == 0
 
     assert credits.balance(user_id) == 4
+
+
+
+def test_batch_reservation_is_atomic(account):
+    _, user_id, _ = account
+
+    keys = credits.reserve_batch(user_id, "batch-one", 4)
+    assert len(keys) == 4
+    assert credits.balance(user_id) == 1
+
+    with pytest.raises(HTTPException) as error:
+        credits.reserve_batch(user_id, "batch-two", 2)
+    assert error.value.status_code == 402
+    assert credits.balance(user_id) == 1
+
+    with pytest.raises(HTTPException) as error:
+        credits.reserve_batch(user_id, "batch-one", 4)
+    assert error.value.status_code == 409
+    assert credits.balance(user_id) == 1
+
+    for key in keys:
+        credits.finish(user_id, key, False)
+    assert credits.balance(user_id) == 5
+
+
+def test_batch_partial_refunds(account):
+    _, user_id, _ = account
+
+    keys = credits.reserve_batch(user_id, "partial", 3)
+    assert credits.balance(user_id) == 2
+
+    credits.finish(user_id, keys[0], True)
+    credits.finish(user_id, keys[1], False)
+    credits.finish(user_id, keys[2], False)
+
+    assert credits.balance(user_id) == 4
+    assert credits.finish(user_id, keys[1], False) is False
+    assert credits.balance(user_id) == 4
+
+
+def test_batch_rejects_insufficient_credits_before_ai(account, monkeypatch):
+    client, user_id, headers = account
+    called = []
+
+    async def fake_match(requirements, resume_text):
+        called.append(True)
+        raise AssertionError("AI must not run without enough credits")
+
+    monkeypatch.setattr(main, "match_resume", fake_match)
+
+    response = client.post(
+        "/api/analyze",
+        headers=headers,
+        data={
+            "requirements": "Python",
+            "request_id": "oversized-batch",
+        },
+        files=[
+            ("files", (f"resume-{i}.pdf", pdf(), "application/pdf"))
+            for i in range(6)
+        ],
+    )
+
+    assert response.status_code == 402
+    assert not called
+    assert credits.balance(user_id) == 5
+
+
+def test_concurrent_batches_cannot_overspend(account):
+    _, user_id, _ = account
+
+    def attempt(index):
+        try:
+            credits.reserve_batch(user_id, f"batch-{index}", 3)
+            return True
+        except HTTPException:
+            return False
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        results = list(pool.map(attempt, range(5)))
+
+    assert sum(results) == 1
+    assert credits.balance(user_id) == 2

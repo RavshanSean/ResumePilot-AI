@@ -97,6 +97,59 @@ def reserve(user_id, request_id):
         )
 
 
+
+
+def reserve_batch(user_id, request_id, count):
+    """Reserve an entire upload atomically before AI work begins."""
+    if not request_id or len(request_id) > 100:
+        raise HTTPException(400, "Invalid batch request identifier.")
+    if not isinstance(count, int) or not 1 <= count <= 30:
+        raise HTTPException(400, "Upload between 1 and 30 resumes.")
+
+    keys = [f"{request_id}:{index}" for index in range(count)]
+
+    with connection() as db:
+        db.execute("BEGIN IMMEDIATE")
+        ensure_account(db, user_id)
+
+        # Check all request IDs before touching the balance.
+        existing = db.execute(
+            """SELECT request_id FROM credit_operations
+               WHERE user_id=? AND request_id IN (
+               """ + ",".join("?" for _ in keys) + ")",
+            (user_id, *keys),
+        ).fetchone()
+
+        if existing:
+            raise HTTPException(
+                409, "This batch was already submitted. "
+                     "Start a new analysis to try again."
+            )
+
+        changed = db.execute(
+            """UPDATE credit_accounts
+               SET balance=balance-?
+               WHERE user_id=? AND balance>=?""",
+            (count, user_id, count),
+        )
+
+        if changed.rowcount != 1:
+            raise HTTPException(
+                402,
+                f"This batch requires {count} credits. "
+                "Your available balance is insufficient."
+            )
+
+        db.executemany(
+            """INSERT INTO credit_operations
+               (user_id,request_id,state,created_at)
+               VALUES(?,?,'reserved',?)""",
+            [(user_id, key, int(time.time())) for key in keys],
+        )
+
+    return keys
+
+
 def finish(user_id, request_id, successful):
     """Complete a reservation, or return its credit exactly once."""
     with connection() as db:

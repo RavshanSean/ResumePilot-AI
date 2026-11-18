@@ -18,6 +18,7 @@ from app.credits import (
     router as credits_router,
     initialize_credits,
     reserve,
+    reserve_batch,
     finish,
     recover_stale_reservations,
 )
@@ -156,6 +157,9 @@ async def analyze(
 ):
     """Parse resumes, evaluate essentials, and suggest review priority."""
 
+    if not files:
+        raise HTTPException(400, "Upload at least one resume.")
+
     if len(files) > MAX_FILES:
         raise HTTPException(
             status_code=400,
@@ -180,13 +184,21 @@ async def analyze(
                 400, "A unique analysis request ID is required."
             )
 
+    chargeable = user["id"] != "test-only"
+
+    # Reserve every file's maximum charge in one transaction.
+    # Insufficient balances fail before any resume reaches AI.
+    if chargeable:
+        reserve_batch(user["id"], request_id, len(files))
+
     started = time.monotonic()
 
     candidates = []
     errors = []
 
     for index, file in enumerate(files):
-        reserved = False
+        reserved = chargeable
+        credit_request = f"{request_id}:{index}"
         filename = file.filename or "Resume"
 
         try:
@@ -197,14 +209,6 @@ async def analyze(
                 filename,
                 data,
             )
-
-            credit_request = f"{request_id}:{index}"
-            chargeable = user["id"] != "test-only"
-            reserved = False
-
-            if chargeable:
-                reserve(user["id"], credit_request)
-                reserved = True
 
             try:
                 assessment = await match_resume(

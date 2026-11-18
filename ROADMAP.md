@@ -20,7 +20,7 @@
 - [ ] Robust whole-batch idempotency and retry handling
 - [ ] Durable job queue and worker leases
 - [ ] Safe recovery and reconciliation across worker crashes
-- [ ] Preflight credit availability and batch-level accounting
+- [x] Atomic preflight credit availability and batch reservation
 - [ ] Stripe hosted Checkout
 - [ ] Verified Stripe webhooks and exactly-once credit grants
 - [ ] Payment reconciliation and refunds
