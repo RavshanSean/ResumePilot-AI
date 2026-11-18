@@ -307,3 +307,126 @@ def test_expired_session_cleanup_preserves_active(client):
             "Authorization": "Bearer " + registered["access_token"]
         },
     ).status_code == 200
+
+
+
+def test_login_lockout_after_repeated_failures(client):
+    client.post("/api/auth/register", json=credentials())
+
+    wrong = {
+        **credentials(),
+        "password": "Incorrect-Password-123!",
+    }
+
+    for _ in range(auth.LOGIN_MAX_FAILURES):
+        response = client.post("/api/auth/login", json=wrong)
+        assert response.status_code == 401
+
+    blocked = client.post(
+        "/api/auth/login", json=credentials()
+    )
+
+    assert blocked.status_code == 429
+    assert "Retry-After" in blocked.headers
+
+
+def test_login_recovers_after_lock_expires(client):
+    client.post("/api/auth/register", json=credentials())
+
+    wrong = {
+        **credentials(),
+        "password": "Incorrect-Password-123!",
+    }
+
+    for _ in range(auth.LOGIN_MAX_FAILURES):
+        client.post("/api/auth/login", json=wrong)
+
+    with auth.connection() as db:
+        db.execute(
+            """UPDATE auth_login_attempts
+               SET locked_until=1, window_start=1
+               WHERE email=?""",
+            ("person@example.com",),
+        )
+
+    response = client.post(
+        "/api/auth/login", json=credentials()
+    )
+
+    assert response.status_code == 200
+
+    with auth.connection() as db:
+        row = db.execute(
+            "SELECT * FROM auth_login_attempts WHERE email=?",
+            ("person@example.com",),
+        ).fetchone()
+
+    assert row is None
+
+
+def test_successful_login_resets_failure_counter(client):
+    client.post("/api/auth/register", json=credentials())
+
+    wrong = {
+        **credentials(),
+        "password": "Incorrect-Password-123!",
+    }
+
+    for _ in range(3):
+        assert client.post(
+            "/api/auth/login", json=wrong
+        ).status_code == 401
+
+    assert client.post(
+        "/api/auth/login", json=credentials()
+    ).status_code == 200
+
+    with auth.connection() as db:
+        row = db.execute(
+            "SELECT * FROM auth_login_attempts WHERE email=?",
+            ("person@example.com",),
+        ).fetchone()
+
+    assert row is None
+
+
+def test_login_lockout_isolated_by_email(client):
+    client.post(
+        "/api/auth/register",
+        json=credentials("first@example.com"),
+    )
+    client.post(
+        "/api/auth/register",
+        json=credentials("second@example.com"),
+    )
+
+    wrong = {
+        **credentials("first@example.com"),
+        "password": "Incorrect-Password-123!",
+    }
+
+    for _ in range(auth.LOGIN_MAX_FAILURES):
+        client.post("/api/auth/login", json=wrong)
+
+    assert client.post(
+        "/api/auth/login",
+        json=credentials("first@example.com"),
+    ).status_code == 429
+
+    assert client.post(
+        "/api/auth/login",
+        json=credentials("second@example.com"),
+    ).status_code == 200
+
+
+def test_unknown_email_is_rate_limited(client):
+    unknown = credentials("unknown@example.com")
+
+    for _ in range(auth.LOGIN_MAX_FAILURES):
+        assert client.post(
+            "/api/auth/login", json=unknown
+        ).status_code == 401
+
+    assert client.post(
+        "/api/auth/login", json=unknown
+    ).status_code == 429

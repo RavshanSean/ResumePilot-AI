@@ -17,6 +17,9 @@ router = APIRouter(prefix="/api/auth", tags=["accounts"])
 
 SESSION_SECONDS = 60 * 60 * 24
 MAX_PASSWORD_BYTES = 1024
+LOGIN_MAX_FAILURES = 5
+LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_LOCK_SECONDS = 15 * 60
 
 
 def database_path():
@@ -69,6 +72,14 @@ def initialize_database():
         db.execute("""
             CREATE INDEX IF NOT EXISTS sessions_user_idx
             ON sessions(user_id)
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS auth_login_attempts (
+                email TEXT PRIMARY KEY,
+                failed_count INTEGER NOT NULL DEFAULT 0,
+                window_start INTEGER NOT NULL,
+                locked_until INTEGER NOT NULL DEFAULT 0
+            )
         """)
 
 
@@ -200,19 +211,80 @@ def register(credentials: Credentials):
 @router.post("/login")
 def login(credentials: Credentials):
     email = normalized_email(credentials.email)
+    now = int(time.time())
+    session = None
+    locked = False
 
+    # Serialize attempts so simultaneous requests cannot
+    # bypass the failure threshold.
     with connection() as db:
-        row = db.execute(
-            "SELECT id,password_hash FROM users WHERE email=?",
+        db.execute("BEGIN IMMEDIATE")
+
+        attempt = db.execute(
+            """SELECT failed_count, window_start, locked_until
+               FROM auth_login_attempts WHERE email=?""",
             (email,),
         ).fetchone()
 
-        if row is None or not verify_password(
-            credentials.password, row["password_hash"]
-        ):
-            raise HTTPException(401, "Invalid email or password.")
+        if attempt and attempt["locked_until"] > now:
+            locked = True
+        else:
+            row = db.execute(
+                "SELECT id,password_hash FROM users WHERE email=?",
+                (email,),
+            ).fetchone()
 
-        session = issue_session(db, row["id"])
+            valid = (
+                row is not None
+                and verify_password(
+                    credentials.password, row["password_hash"]
+                )
+            )
+
+            if valid:
+                db.execute(
+                    "DELETE FROM auth_login_attempts WHERE email=?",
+                    (email,),
+                )
+                session = issue_session(db, row["id"])
+            else:
+                if (
+                    attempt is None
+                    or now - attempt["window_start"]
+                    >= LOGIN_WINDOW_SECONDS
+                ):
+                    count = 1
+                    window_start = now
+                else:
+                    count = attempt["failed_count"] + 1
+                    window_start = attempt["window_start"]
+
+                locked_until = (
+                    now + LOGIN_LOCK_SECONDS
+                    if count >= LOGIN_MAX_FAILURES
+                    else 0
+                )
+
+                db.execute(
+                    """INSERT INTO auth_login_attempts
+                       (email,failed_count,window_start,locked_until)
+                       VALUES(?,?,?,?)
+                       ON CONFLICT(email) DO UPDATE SET
+                         failed_count=excluded.failed_count,
+                         window_start=excluded.window_start,
+                         locked_until=excluded.locked_until""",
+                    (email, count, window_start, locked_until),
+                )
+
+    if locked:
+        raise HTTPException(
+            429,
+            "Too many login attempts. Try again in 15 minutes.",
+            headers={"Retry-After": str(LOGIN_LOCK_SECONDS)},
+        )
+
+    if session is None:
+        raise HTTPException(401, "Invalid email or password.")
 
     return session
 
