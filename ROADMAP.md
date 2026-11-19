@@ -147,3 +147,10 @@ Complete before accepting live payments or launching publicly.
 - [ ] Production worker process lifecycle, heartbeat scheduling and monitoring
 - [ ] Staged input retention and cleanup coordination after terminal jobs
 - [ ] HTTP asynchronous submission and authenticated job status polling
+
+## Batch 24: Offline terminal staging retention
+- [x] Explicit offline cleanup for completed/interrupted staged job manifests
+- [x] Preserve batch replay and credit ledger during private upload deletion
+- [x] Bounded orphan-file reconciliation with age and symlink safeguards
+- [x] No automatic deletion scheduler, HTTP endpoint, frontend changes or live providers
+- [ ] Production encryption at rest, secure deletion guarantees and retention policy
