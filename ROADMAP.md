@@ -154,3 +154,10 @@ Complete before accepting live payments or launching publicly.
 - [x] Bounded orphan-file reconciliation with age and symlink safeguards
 - [x] No automatic deletion scheduler, HTTP endpoint, frontend changes or live providers
 - [ ] Production encryption at rest, secure deletion guarantees and retention policy
+
+## Batch 25: Privacy audit and private-file hardening
+- [x] Allowlisted numeric-only audit events for resume processing
+- [x] Reject group/world-readable resume files and hardlinks on read
+- [x] Reject symlinked ancestors in temporary storage path
+- [x] Security regression tests
+- [ ] Production encryption at rest and full operational log audit

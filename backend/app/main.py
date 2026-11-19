@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.matcher import MatchingError, fallback_result, match_resume
+from app.privacy_logging import audit_event
 from app.auth import router as auth_router, initialize_database, current_user, cleanup_expired_sessions, cleanup_old_login_attempts, initialize_email_verification
 from app.account_recovery import (router as recovery_router, initialize_recovery, cleanup_expired_tokens)
 from app.billing import router as billing_router, initialize_billing
@@ -254,10 +255,7 @@ async def analyze(
                 if reserved:
                     finish(user["id"], credit_request, False)
                     reserved = False
-                logger.warning(
-                    "AI matching unavailable: batch_index=%d",
-                    index,
-                )
+                audit_event("ai_matching_unavailable", batch_index=index)
 
                 assessment = fallback_result(requirements)
                 ai_completed = False
@@ -297,12 +295,7 @@ async def analyze(
             if locals().get("reserved", False):
                 finish(user["id"], credit_request, False)
                 reserved = False
-            logger.error(
-                "Resume processing failed: "
-                "batch_index=%d error_type=%s",
-                index,
-                type(exc).__name__,
-            )
+            audit_event("resume_processing_failed", batch_index=index)
 
             errors.append({
                 "filename": filename,
@@ -317,19 +310,18 @@ async def analyze(
                 await file.close()
 
             except Exception as exc:
-                logger.error(
-                    "Upload cleanup failed: "
-                    "batch_index=%d error_type=%s",
-                    index,
-                    type(exc).__name__,
-                )
+                audit_event("upload_cleanup_failed", batch_index=index)
 
+    audit_event(
+        "resume_batch_completed",
+        files=len(files), candidates=len(candidates), errors=len(errors),
+        duration_ms=int((time.monotonic() - started) * 1000),
+    )
+    # Preserve the established numeric-only operational summary for existing
+    # log consumers and resilience tests. Never log filenames or resume text.
     logger.info(
-        "Resume batch complete: "
-        "files=%d candidates=%d errors=%d duration_ms=%d",
-        len(files),
-        len(candidates),
-        len(errors),
+        "Resume batch complete: files=%d candidates=%d errors=%d duration_ms=%d",
+        len(files), len(candidates), len(errors),
         int((time.monotonic() - started) * 1000),
     )
 

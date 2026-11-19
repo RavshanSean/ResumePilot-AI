@@ -22,8 +22,9 @@ def storage_root():
         root = Path(value).expanduser().absolute()
     else:
         root = Path(database_path()).expanduser().absolute().parent / 'private_uploads'
-    if root.is_symlink():
-        raise RuntimeError('Temporary storage root must not be a symlink.')
+    for ancestor in (root, *root.parents):
+        if ancestor.is_symlink():
+            raise RuntimeError('Temporary storage path must not contain a symlink.')
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     if root.is_symlink() or not root.is_dir():
         raise RuntimeError('Temporary storage root is unsafe.')
@@ -107,6 +108,8 @@ def read_resume(user_id, file_id, now=None):
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise OSError('Unsafe resume file.')
+        if stat.S_IMODE(info.st_mode) & 0o077:
+            raise OSError('Unsafe resume file permissions.')
         data = stream.read(MAX_UPLOAD_BYTES+1)
     if len(data) != row['byte_count'] or hashlib.sha256(data).hexdigest() != row['sha256']:
         raise OSError('Stored resume failed integrity verification.')
