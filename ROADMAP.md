@@ -138,3 +138,12 @@ Complete before accepting live payments or launching publicly.
 - [x] Preserve synchronous API and frontend without activating workers
 - [ ] Validate AI outcomes in actual background worker and add lifecycle orchestration
 - [ ] Ensure staged-file cleanup, crash reconciliation and production-safe encryption
+
+## Batch 23: Explicit worker orchestration and controlled crash recovery
+- [x] One-job worker coordinator with injected trusted processor and lease heartbeat callback
+- [x] Fenced atomic settlement and no automatic retries on failures
+- [x] Read-only recovery inspection and explicit stopped-worker reconciliation
+- [x] Existing synchronous API and frontend unchanged; no background service activated
+- [ ] Production worker process lifecycle, heartbeat scheduling and monitoring
+- [ ] Staged input retention and cleanup coordination after terminal jobs
+- [ ] HTTP asynchronous submission and authenticated job status polling
