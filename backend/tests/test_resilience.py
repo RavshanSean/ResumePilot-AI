@@ -121,7 +121,7 @@ def test_password_protected_pdf_reports_per_file_error():
 
     assert response.status_code == 200
     assert not response.json()["candidates"]
-    assert "unencrypted" in response.json()["errors"][0]["message"]
+    assert "Password-protected" in response.json()["errors"][0]["message"]
 
 
 def test_ai_failure_does_not_discard_valid_resume(monkeypatch):

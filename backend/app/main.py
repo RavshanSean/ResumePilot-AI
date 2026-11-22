@@ -98,6 +98,8 @@ logger = logging.getLogger("uvicorn.error")
 MAX_SIZE = 10 * 1024 * 1024
 MAX_FILES = 30
 MAX_REQUIREMENTS = 20000
+MAX_EXTRACTED_CHARS = 100_000
+MAX_PDF_PAGES = 100
 
 
 def parse_resume(filename: str, data: bytes) -> str:
@@ -115,36 +117,41 @@ def parse_resume(filename: str, data: bytes) -> str:
 
     try:
         if extension == ".pdf":
-            with pymupdf.open(
-                stream=data,
-                filetype="pdf",
-            ) as document:
+            with pymupdf.open(stream=data, filetype="pdf") as document:
                 if document.needs_pass:
-                    raise ValueError(
-                        "Password-protected PDFs are not supported."
-                    )
-
-                result = "\n".join(
-                    page.get_text()
-                    for page in document
-                )
-
+                    raise ValueError("Password-protected PDFs are not supported.")
+                if len(document) > MAX_PDF_PAGES:
+                    raise ValueError("PDF has too many pages (maximum 100).")
+                chunks = []
+                total = 0
+                for page in document:
+                    text = page.get_text()
+                    total += len(text) + 1
+                    if total > MAX_EXTRACTED_CHARS:
+                        raise ValueError("Resume text exceeds the 100,000-character limit.")
+                    chunks.append(text)
+                result = "\n".join(chunks)
         else:
             document = Document(io.BytesIO(data))
-
-            paragraphs = [
-                paragraph.text
-                for paragraph in document.paragraphs
-            ]
-
-            tables = [
-                " ".join(cell.text for cell in row.cells)
-                for table in document.tables
-                for row in table.rows
-            ]
-
-            result = "\n".join(paragraphs + tables)
-
+            chunks = []
+            total = 0
+            # Do not accumulate unbounded extracted text from compressed DOCX files.
+            for paragraph in document.paragraphs:
+                text = paragraph.text
+                total += len(text) + 1
+                if total > MAX_EXTRACTED_CHARS:
+                    raise ValueError("Resume text exceeds the 100,000-character limit.")
+                chunks.append(text)
+            for table in document.tables:
+                for row in table.rows:
+                    text = " ".join(cell.text for cell in row.cells)
+                    total += len(text) + 1
+                    if total > MAX_EXTRACTED_CHARS:
+                        raise ValueError("Resume text exceeds the 100,000-character limit.")
+                    chunks.append(text)
+            result = "\n".join(chunks)
+    except ValueError:
+        raise
     except Exception as exc:
         raise ValueError(
             "Unable to read this document. "

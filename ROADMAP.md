@@ -167,3 +167,9 @@ Complete before accepting live payments or launching publicly.
 - [x] Clean expired recovery tokens after initialization
 - [x] Test fresh database, legacy migration and restart persistence
 - [ ] Configure production SMTP separately
+
+## Batch 27: Defensive resume parsing
+- [x] Bound PDF page count and extracted PDF/DOCX text
+- [x] Preserve specific safe validation messages for size, encryption, and text limits
+- [x] Add regression tests for malformed, encrypted, and compressed-content documents
+- [ ] Production-grade sandboxed parsing and CPU/memory limits remain future work
