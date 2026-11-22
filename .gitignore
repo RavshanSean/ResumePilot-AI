@@ -8,8 +8,24 @@ __pycache__/
 .DS_Store
 
 *.tsbuildinfo
-\n*.db\n*.db-shm\n*.db-wal\n*.sqlite3
 backend/resumepilot.db
 *.db
 *.db-shm
 *.db-wal
+# Local environment files (retain safe templates)
+.env.*
+!.env.example
+!.env.*.example
+# Local database variants
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.db-journal
+# Local private artifacts
+*.log
+private_uploads/
+private_storage/
+*.pem
+*.p12
+*.pfx
+*.key

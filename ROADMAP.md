@@ -179,3 +179,9 @@ Complete before accepting live payments or launching publicly.
 - [x] Remove unverified model quotes from uncertain/not-met requirements
 - [x] Offline tests for connection errors, timeouts, HTTP errors and malformed responses
 - [ ] Production worker retry and reconciliation remain future work
+
+## Batch 29: Continuous integration and ignore hygiene
+- [x] Add GitHub Actions Python backend test job
+- [x] Add GitHub Actions Node frontend test and production build job
+- [x] Fix malformed SQLite ignore line and extend local secret/artifact exclusions
+- [ ] Confirm first GitHub Actions run passes on GitHub-hosted runners
