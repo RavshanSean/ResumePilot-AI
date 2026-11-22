@@ -190,3 +190,10 @@ Complete before accepting live payments or launching publicly.
 - [x] Reject invalid lease durations before any queued job is claimed
 - [x] Add offline regression tests for invalid and valid lease settings
 - [ ] Production worker scheduling, multiworker orchestration and crash recovery remain deferred
+
+## Batch 31: Stopped-worker crash recovery regression coverage
+- [x] Verify controlled recovery invalidates late worker tokens before settlement
+- [x] Verify still-reserved credits are refunded exactly once
+- [x] Verify completed jobs and charges survive recovery
+- [x] Verify read-only recovery inspection cannot alter credits
+- [ ] Automated worker retries and production-safe multiworker recovery remain disabled

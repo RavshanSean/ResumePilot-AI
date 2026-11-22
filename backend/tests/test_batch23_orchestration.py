@@ -99,3 +99,52 @@ def test_invalid_processor_and_recovery_age(job):
     with pytest.raises(ValueError): run_one_staged_job(None)
     with pytest.raises(ValueError): inspect_recovery_candidates(max_age_seconds=0)
     with pytest.raises(ValueError): recover_stopped_workers(workers_stopped=True,max_age_seconds=0)
+
+
+# Batch 31: stopped-worker recovery must fence stale work and refund once.
+def test_batch31_recovery_fences_late_worker(job):
+    from app.job_queue import claim_staged_job, heartbeat
+    from app.worker_settlement import settle_leased_batch, WorkerSettlementError
+    uid, _ = job
+    lease = claim_staged_job()
+    assert lease is not None
+    token = lease['lease_token']
+    with connection() as db:
+        db.execute('UPDATE analysis_batches SET created_at=100')
+    result = recover_stopped_workers(workers_stopped=True, now=86502)
+    assert result == {'interrupted_batches': 1, 'refunded_credits': 2}
+    assert credits.balance(uid) == 5
+    assert not heartbeat(uid, 'job', token)
+    with pytest.raises(WorkerSettlementError):
+        settle_leased_batch(uid, 'job', token, {'candidates': [], 'errors': []}, [True, True])
+    assert credits.balance(uid) == 5
+    assert recover_stopped_workers(workers_stopped=True, now=86502) == {
+        'interrupted_batches': 0, 'refunded_credits': 0,
+    }
+
+
+def test_batch31_recovery_preserves_already_settled_credits(job):
+    uid, _ = job
+    def processor(requirements, uploads, renew):
+        return {'candidates': [], 'errors': []}, [True, False]
+    assert run_one_staged_job(processor)['completed']
+    assert credits.balance(uid) == 4
+    with connection() as db:
+        db.execute('UPDATE analysis_batches SET created_at=100')
+    assert recover_stopped_workers(workers_stopped=True, now=86502) == {
+        'interrupted_batches': 0, 'refunded_credits': 0,
+    }
+    assert credits.balance(uid) == 4
+    with connection() as db:
+        assert db.execute('SELECT state FROM analysis_jobs').fetchone()[0] == 'completed'
+
+
+def test_batch31_inspection_does_not_release_credits(job):
+    uid, _ = job
+    with connection() as db:
+        db.execute('UPDATE analysis_batches SET created_at=100')
+    for _ in range(2):
+        assert len(inspect_recovery_candidates(now=86502)) == 1
+        assert credits.balance(uid) == 3
+    with connection() as db:
+        assert db.execute("SELECT COUNT(*) FROM credit_operations WHERE state='reserved'").fetchone()[0] == 2
