@@ -26,6 +26,10 @@ def run_one_staged_job(processor, lease_seconds=300):
     """
     if not callable(processor):
         raise ValueError('Trusted processor callable required.')
+    # Reject invalid configuration before claiming a queued job.
+    # bool is an int subclass and must not be accepted as a lease duration.
+    if type(lease_seconds) is not int or not 1 <= lease_seconds <= 86400:
+        raise ValueError('Lease duration must be an integer from 1 to 86400 seconds.')
     lease = claim_staged_job(lease_seconds=lease_seconds)
     if lease is None:
         return None

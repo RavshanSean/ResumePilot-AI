@@ -185,3 +185,8 @@ Complete before accepting live payments or launching publicly.
 - [x] Add GitHub Actions Node frontend test and production build job
 - [x] Fix malformed SQLite ignore line and extend local secret/artifact exclusions
 - [ ] Confirm first GitHub Actions run passes on GitHub-hosted runners
+
+## Batch 30: Worker orchestration configuration safety
+- [x] Reject invalid lease durations before any queued job is claimed
+- [x] Add offline regression tests for invalid and valid lease settings
+- [ ] Production worker scheduling, multiworker orchestration and crash recovery remain deferred
