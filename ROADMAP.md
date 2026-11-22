@@ -161,3 +161,9 @@ Complete before accepting live payments or launching publicly.
 - [x] Reject symlinked ancestors in temporary storage path
 - [x] Security regression tests
 - [ ] Production encryption at rest and full operational log audit
+
+## Batch 26: Recovery startup reliability
+- [x] Initialize email verification and recovery tables on startup
+- [x] Clean expired recovery tokens after initialization
+- [x] Test fresh database, legacy migration and restart persistence
+- [ ] Configure production SMTP separately

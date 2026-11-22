@@ -36,6 +36,9 @@ import os
 @asynccontextmanager
 async def lifespan(app):
     initialize_database()
+    initialize_email_verification()
+    initialize_recovery()
+    cleanup_expired_tokens()
     cleanup_expired_sessions()
     cleanup_old_login_attempts()
     initialize_credits()
