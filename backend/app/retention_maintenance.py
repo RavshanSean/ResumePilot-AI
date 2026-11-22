@@ -63,16 +63,18 @@ def cleanup_terminal_staging(*, workers_stopped=False, now=None, grace_seconds=3
             uid, rid = job['user_id'], job['request_id']
             files = db.execute("""SELECT file_id FROM analysis_job_inputs
                 WHERE user_id=? AND request_id=?""", (uid,rid)).fetchall()
-            ids.extend(r['file_id'] for r in files)
             db.execute('DELETE FROM analysis_job_inputs WHERE user_id=? AND request_id=?',(uid,rid))
             db.execute('DELETE FROM analysis_job_requirements WHERE user_id=? AND request_id=?',(uid,rid))
             for f in files:
-                db.execute("""DELETE FROM temporary_resume_files WHERE file_id=?
+                # Do not remove a file still referenced by another manifest.
+                changed = db.execute("""DELETE FROM temporary_resume_files WHERE file_id=?
                     AND NOT EXISTS(SELECT 1 FROM analysis_job_inputs WHERE file_id=?)""",
                     (f['file_id'],f['file_id']))
-    for file_id in ids:
+                if changed.rowcount == 1:
+                    ids.append(f['file_id'])
+    for file_id in set(ids):
         _path(root,file_id).unlink(missing_ok=True)
-    return {'jobs':len(jobs),'files':len(ids)}
+    return {'jobs':len(jobs),'files':len(set(ids))}
 
 
 def reconcile_orphans(*, workers_stopped=False, min_age_seconds=86400, limit=100, now=None):

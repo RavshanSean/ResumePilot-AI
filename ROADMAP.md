@@ -197,3 +197,9 @@ Complete before accepting live payments or launching publicly.
 - [x] Verify completed jobs and charges survive recovery
 - [x] Verify read-only recovery inspection cannot alter credits
 - [ ] Automated worker retries and production-safe multiworker recovery remain disabled
+
+## Batch 32: Shared-reference-safe private retention
+- [x] Do not unlink a staged resume while another manifest still references it
+- [x] Count only physically eligible files removed during terminal cleanup
+- [x] Add offline regression test for cross-job shared-file references
+- [ ] Production encryption at rest and secure deletion guarantees remain future work
