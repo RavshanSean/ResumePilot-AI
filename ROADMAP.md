@@ -173,3 +173,9 @@ Complete before accepting live payments or launching publicly.
 - [x] Preserve specific safe validation messages for size, encryption, and text limits
 - [x] Add regression tests for malformed, encrypted, and compressed-content documents
 - [ ] Production-grade sandboxed parsing and CPU/memory limits remain future work
+
+## Batch 28: AI matching reliability
+- [x] Reject invalid AI timeout settings before network calls
+- [x] Remove unverified model quotes from uncertain/not-met requirements
+- [x] Offline tests for connection errors, timeouts, HTTP errors and malformed responses
+- [ ] Production worker retry and reconciliation remain future work

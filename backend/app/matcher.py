@@ -7,6 +7,7 @@ Red means further human review is needed. Neither is a hiring decision.
 
 import json
 import logging
+import math
 import os
 import asyncio
 from typing import Any
@@ -119,6 +120,11 @@ def _normalize_result(
 
         evidence = evidence.strip()
 
+        # Never display model-supplied quotes for unsupported or uncertain
+        # requirements: they are not verified supporting evidence.
+        if status != "supported":
+            evidence = ""
+
         # A supported requirement must quote actual resume text.
         if status == "supported":
             if not evidence or evidence.casefold() not in resume_text.casefold():
@@ -190,6 +196,11 @@ async def match_resume(
 
     if AI_PROVIDER not in {"ollama", "openai"}:
         raise MatchingError("Unsupported AI provider configuration.")
+
+    # Reject invalid timeout settings before attempting a network call.
+    # Prevents misconfiguration from turning into an unhandled 500 error.
+    if not math.isfinite(AI_TIMEOUT_SECONDS) or AI_TIMEOUT_SECONDS <= 0:
+        raise MatchingError("AI timeout configuration is invalid.")
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
