@@ -1,4 +1,5 @@
 """Opt-in async submission; no worker starts from an HTTP request."""
+import os
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from app.auth import current_user, connection
 from app.async_submission import validate_submission
@@ -45,6 +46,8 @@ async def submit_job(
     request_id: str = Form(''),
     user=Depends(current_user),
 ):
+    if os.getenv('RESUMEPILOT_ENABLE_ASYNC_SUBMISSION') != '1':
+        raise HTTPException(503, 'Asynchronous submission is not enabled.')
     if len(files) > 30:
         raise HTTPException(400, 'Upload between 1 and 30 resumes.')
     uploads = []
