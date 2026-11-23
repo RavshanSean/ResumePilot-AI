@@ -66,6 +66,8 @@ app.include_router(credits_router)
 app.include_router(billing_router)
 from app.job_status import router as job_status_router
 app.include_router(job_status_router)
+from app.async_routes import router as async_router
+app.include_router(async_router)
 
 
 def screening_access(
