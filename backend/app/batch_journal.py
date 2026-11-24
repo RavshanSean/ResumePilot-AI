@@ -92,8 +92,8 @@ def abandon_unreserved_batch(user_id, request_id):
     with connection() as db:
         db.execute('BEGIN IMMEDIATE')
         existing = db.execute(
-            'SELECT 1 FROM credit_operations WHERE user_id=? AND substr(request_id,1,?)=? LIMIT 1',
-            (user_id, len(request_id)+1, request_id+':'),
+            'SELECT 1 FROM credit_operations WHERE user_id=? AND substr(request_id,1,?)=? AND substr(request_id, length(?) + 1) IN (CAST(0 AS TEXT),CAST(1 AS TEXT),CAST(2 AS TEXT),CAST(3 AS TEXT),CAST(4 AS TEXT),CAST(5 AS TEXT),CAST(6 AS TEXT),CAST(7 AS TEXT),CAST(8 AS TEXT),CAST(9 AS TEXT),CAST(10 AS TEXT),CAST(11 AS TEXT),CAST(12 AS TEXT),CAST(13 AS TEXT),CAST(14 AS TEXT),CAST(15 AS TEXT),CAST(16 AS TEXT),CAST(17 AS TEXT),CAST(18 AS TEXT),CAST(19 AS TEXT),CAST(20 AS TEXT),CAST(21 AS TEXT),CAST(22 AS TEXT),CAST(23 AS TEXT),CAST(24 AS TEXT),CAST(25 AS TEXT),CAST(26 AS TEXT),CAST(27 AS TEXT),CAST(28 AS TEXT),CAST(29 AS TEXT)) LIMIT 1',
+            (user_id, len(request_id)+1, request_id+':', request_id+':'),
         ).fetchone()
         if existing is None:
             db.execute(
@@ -174,8 +174,8 @@ def recover_interrupted_batches(now=None, max_age_seconds=86400):
             user_id, request_id = row['user_id'], row['request_id']
             # Exact prefix comparison, not LIKE wildcard matching.
             reserved = db.execute(
-                "SELECT request_id FROM credit_operations WHERE user_id=? AND substr(request_id,1,?)=? AND state='reserved'",
-                (user_id, len(request_id)+1, request_id+':'),
+                "SELECT request_id FROM credit_operations WHERE user_id=? AND substr(request_id,1,?)=? AND substr(request_id, length(?) + 1) IN (CAST(0 AS TEXT),CAST(1 AS TEXT),CAST(2 AS TEXT),CAST(3 AS TEXT),CAST(4 AS TEXT),CAST(5 AS TEXT),CAST(6 AS TEXT),CAST(7 AS TEXT),CAST(8 AS TEXT),CAST(9 AS TEXT),CAST(10 AS TEXT),CAST(11 AS TEXT),CAST(12 AS TEXT),CAST(13 AS TEXT),CAST(14 AS TEXT),CAST(15 AS TEXT),CAST(16 AS TEXT),CAST(17 AS TEXT),CAST(18 AS TEXT),CAST(19 AS TEXT),CAST(20 AS TEXT),CAST(21 AS TEXT),CAST(22 AS TEXT),CAST(23 AS TEXT),CAST(24 AS TEXT),CAST(25 AS TEXT),CAST(26 AS TEXT),CAST(27 AS TEXT),CAST(28 AS TEXT),CAST(29 AS TEXT)) AND state='reserved'",
+                (user_id, len(request_id)+1, request_id+':', request_id+':'),
             ).fetchall()
             for operation in reserved:
                 changed = db.execute(
